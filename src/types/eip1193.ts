@@ -1411,8 +1411,8 @@ export type WalletRpcSchema = [
     ReturnType: Prettify<WalletGrantPermissionsReturnType>
   },
   {
-    Method: 'wallet_getActivePermissions',
-    Parameters?: [Address],
+    Method: 'wallet_getActivePermissions'
+    Parameters?: [Address]
     ReturnType: WalletGetActivePermissionsReturnType
   },
   /**

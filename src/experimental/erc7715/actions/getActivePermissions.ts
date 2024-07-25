@@ -1,25 +1,26 @@
+import { parseAccount } from '../../../accounts/utils/parseAccount.js'
 import type { Client } from '../../../clients/createClient.js'
 import type { Transport } from '../../../clients/transports/createTransport.js'
-import type { Account, GetAccountParameter } from '../../../types/account.js'
-import type { Permission } from '../types/permission.js'
-import { parseAccount } from '../../../accounts/utils/parseAccount.js'
 import { AccountNotFoundError } from '../../../errors/account.js'
+import type { Account, GetAccountParameter } from '../../../types/account.js'
 import type { Chain } from '../../../types/chain.js'
-import type {
-  WalletGetActivePermissionsReturnType
-} from '../../../types/eip1193.js'
+import type { WalletGetActivePermissionsReturnType } from '../../../types/eip1193.js'
+import type { Permission } from '../types/permission.js'
 
 export type GetActivePermissionsParameters<
-account extends Account | undefined = Account | undefined,
+  account extends Account | undefined = Account | undefined,
 > = GetAccountParameter<account>
 
-export type GetActivePermissionsReturnType = Omit<WalletGetActivePermissionsReturnType, 'permissions'> & {
-    permissions: Permission[]
+export type GetActivePermissionsReturnType = Omit<
+  WalletGetActivePermissionsReturnType,
+  'permissions'
+> & {
+  permissions: Permission[]
 }
 
 export async function getActivePermissions<
-chain extends Chain | undefined,
-account extends Account | undefined = undefined,
+  chain extends Chain | undefined,
+  account extends Account | undefined = undefined,
 >(
   ...parameters: account extends Account
     ?

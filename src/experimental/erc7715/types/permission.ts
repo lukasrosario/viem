@@ -54,12 +54,12 @@ export type CallWithPermissionPermission = {
 
 export type Permission<uint256 = bigint> = {
   permission: OneOf<
-  | NativeTokenTransferPermission
-  | Erc20TokenTransferPermission
-  | ContractCallPermission
-  | CallWithPermissionPermission
-  | CustomPermission
->
+    | NativeTokenTransferPermission
+    | Erc20TokenTransferPermission
+    | ContractCallPermission
+    | CallWithPermissionPermission
+    | CustomPermission
+  >
   /** Set of policies for the permission. */
   policies: readonly Policy<uint256>[]
   /** Whether or not the wallet must grant the permission. */

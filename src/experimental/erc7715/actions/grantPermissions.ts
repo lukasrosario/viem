@@ -61,7 +61,7 @@ export async function grantPermissions(
     },
     { retryCount: 0 },
   )
-  return (result) as GrantPermissionsReturnType
+  return result as GrantPermissionsReturnType
 }
 
 function formatParameters(parameters: GrantPermissionsParameters) {
@@ -84,7 +84,6 @@ function formatParameters(parameters: GrantPermissionsParameters) {
           if (policy.type === 'native-token-spend-limit') {
             return {
               allowance: numberToHex(policy.data.allowance),
-            
             }
           }
           return policy.data
