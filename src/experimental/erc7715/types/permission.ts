@@ -1,7 +1,9 @@
-import type { Address } from 'abitype'
-
 import type { OneOf } from '../../../types/utils.js'
 import type { Policy } from './policy.js'
+import type { Signer } from './signer.js'
+
+type Hex = `0x${string}`
+type Address = Hex
 
 /** @internal */
 export type CustomPermission<data = unknown, type = { custom: string }> = {
@@ -40,14 +42,30 @@ export type ContractCallPermission = {
   }
 }
 
-export type Permission<uint256 = bigint> = OneOf<
+export type CallWithPermissionPermission = {
+  type: 'call-with-permission'
+  data: {
+    /** Contract address. */
+    allowedContract: Address
+    /** Set of contract signatures to permit. */
+    permissionArgs: Hex
+  }
+}
+
+export type Permission<uint256 = bigint> = {
+  permission: OneOf<
   | NativeTokenTransferPermission
   | Erc20TokenTransferPermission
   | ContractCallPermission
+  | CallWithPermissionPermission
   | CustomPermission
-> & {
+>
   /** Set of policies for the permission. */
   policies: readonly Policy<uint256>[]
   /** Whether or not the wallet must grant the permission. */
   required?: boolean | undefined
+  account: Address
+  chainId: number
+  expiry: number
+  signer: Signer
 }

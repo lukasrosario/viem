@@ -75,6 +75,11 @@ export {
   type WalletActionsErc7715,
   walletActionsErc7715,
 } from './erc7715/decorators/erc7715.js'
+export {
+  type GetActivePermissionsParameters,
+  type GetActivePermissionsReturnType,
+  getActivePermissions,
+} from './erc7715/actions/getActivePermissions.js'
 
 export {
   type SoladyActions,

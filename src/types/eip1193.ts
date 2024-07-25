@@ -132,44 +132,28 @@ export type WalletCallReceipt<quantity = Hex, status = Hex> = {
 }
 
 export type WalletGrantPermissionsParameters = {
-  signer?:
-    | {
-        type: string
-        data?: unknown | undefined
-      }
-    | undefined
   permissions: readonly {
-    data: unknown
+    account: Address
+    chainId: Hex
+    expiry: number
+    signer: {
+      type: string
+      data?: unknown
+    }
+    permission: {
+      type: unknown
+      data: unknown
+    }
     policies: readonly {
       data: unknown
       type: string
     }[]
-    required?: boolean | undefined
-    type: string
   }[]
-  expiry: number
 }
 
 export type WalletGrantPermissionsReturnType = {
-  expiry: number
-  factory?: `0x${string}` | undefined
-  factoryData?: string | undefined
-  grantedPermissions: readonly {
-    data: unknown
-    policies: readonly {
-      data: unknown
-      type: string
-    }[]
-    required?: boolean | undefined
-    type: string
-  }[]
-  permissionsContext: string
-  signerData?:
-    | {
-        userOpBuilder?: `0x${string}` | undefined
-        submitToAddress?: `0x${string}` | undefined
-      }
-    | undefined
+  context: string
+  permissions: readonly unknown[]
 }
 
 export type WalletGetCallsStatusReturnType<quantity = Hex, status = Hex> = {
@@ -188,6 +172,11 @@ export type WalletPermission = {
   id: string
   invoker: `http://${string}` | `https://${string}`
   parentCapability: 'eth_accounts' | string
+}
+
+export type WalletGetActivePermissionsReturnType = {
+  permissions: readonly unknown[]
+  context: string
 }
 
 export type WalletSendCallsParameters<
@@ -1418,8 +1407,13 @@ export type WalletRpcSchema = [
    */
   {
     Method: 'wallet_grantPermissions'
-    Parameters?: [WalletGrantPermissionsParameters]
+    Parameters?: WalletGrantPermissionsParameters
     ReturnType: Prettify<WalletGrantPermissionsReturnType>
+  },
+  {
+    Method: 'wallet_getActivePermissions',
+    Parameters?: [Address],
+    ReturnType: WalletGetActivePermissionsReturnType
   },
   /**
    * @description Requests the given permissions from the user.

@@ -35,9 +35,18 @@ export type RateLimitPolicy = {
   }
 }
 
+/** internal */
+export type NativeTokenSpendLimitPolicy<uint256 = bigint> = {
+  type: 'native-token-spend-limit'
+  data: {
+    allowance: uint256
+  }
+}
+
 export type Policy<amount = bigint> = OneOf<
   | TokenAllowancePolicy<amount>
   | GasLimitPolicy<amount>
   | RateLimitPolicy
+  | NativeTokenSpendLimitPolicy<amount>
   | CustomPolicy
 >
