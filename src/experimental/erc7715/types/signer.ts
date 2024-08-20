@@ -30,6 +30,14 @@ export type WalletSigner = {
   type: 'wallet'
 }
 
+/** @internal */
+export type P256Signer = {
+  type: 'p256'
+  data: {
+    publicKey: `0x${string}`
+  }
+}
+
 export type Signer = OneOf<
-  AccountSigner | KeySigner | MultiKeySigner | WalletSigner
+  AccountSigner | KeySigner | MultiKeySigner | WalletSigner | P256Signer
 >

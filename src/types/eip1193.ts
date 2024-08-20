@@ -132,7 +132,6 @@ export type WalletCallReceipt<quantity = Hex, status = Hex> = {
 }
 
 export type WalletGrantPermissionsParameters = {
-  permissions: readonly {
     account: Address
     chainId: Hex
     expiry: number
@@ -140,15 +139,10 @@ export type WalletGrantPermissionsParameters = {
       type: string
       data?: unknown
     }
-    permission: {
-      type: unknown
-      data: unknown
-    }
-    policies: readonly {
+    permissions: readonly {
       data: unknown
       type: string
     }[]
-  }[]
 }
 
 export type WalletGrantPermissionsReturnType = {
@@ -1407,7 +1401,7 @@ export type WalletRpcSchema = [
    */
   {
     Method: 'wallet_grantPermissions'
-    Parameters?: WalletGrantPermissionsParameters
+    Parameters?: WalletGrantPermissionsParameters[]
     ReturnType: Prettify<WalletGrantPermissionsReturnType>
   },
   {

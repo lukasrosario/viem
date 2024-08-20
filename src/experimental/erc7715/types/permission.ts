@@ -1,5 +1,3 @@
-import type { OneOf } from '../../../types/utils.js'
-import type { Policy } from './policy.js'
 import type { Signer } from './signer.js'
 
 type Hex = `0x${string}`
@@ -52,18 +50,33 @@ export type CallWithPermissionPermission = {
   }
 }
 
-export type Permission<uint256 = bigint> = {
-  permission: OneOf<
-    | NativeTokenTransferPermission
-    | Erc20TokenTransferPermission
-    | ContractCallPermission
-    | CallWithPermissionPermission
-    | CustomPermission
-  >
-  /** Set of policies for the permission. */
-  policies: readonly Policy<uint256>[]
-  /** Whether or not the wallet must grant the permission. */
-  required?: boolean | undefined
+export type NativeTokenRecurringAllowancePermission = {
+  type: 'native-token-recurring-allowance'
+  data: {
+    allowance: bigint
+    cycleStart: number
+    cycleDuration: number
+  },
+}
+
+export type AllowedContractPermission = {
+  type: 'allowed-contract'
+  data: {
+    contract: Address
+  },
+}
+
+export type AllowedSelectorPermission = {
+  type: 'allowed-selector'
+  data: {
+    selector: Hex
+  },
+}
+
+export type PermissionRequest = NativeTokenRecurringAllowancePermission | AllowedContractPermission | AllowedSelectorPermission
+
+export type Permission = {
+  permissions: readonly PermissionRequest[]
   account: Address
   chainId: number
   expiry: number

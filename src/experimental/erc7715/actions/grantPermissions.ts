@@ -1,17 +1,17 @@
-import type { Client } from '../../../clients/createClient.js'
-import type { Transport } from '../../../clients/transports/createTransport.js'
-import { numberToHex } from '../../../utils/index.js'
-import type { Permission } from '../types/permission.js'
+import type { Client } from "../../../clients/createClient.js";
+import type { Transport } from "../../../clients/transports/createTransport.js";
+import { numberToHex } from "../../../utils/index.js";
+import type { Permission } from "../types/permission.js";
 
 export type GrantPermissionsParameters = {
   /** Set of permissions to grant to the user. */
-  permissions: readonly Permission[]
-}
+  permissions: readonly Permission[];
+};
 
 export type GrantPermissionsReturnType = {
-  context: string
-  permissions: readonly Permission[]
-}
+  context: string;
+  permissions: readonly Permission[];
+};
 
 /**
  * Request permissions from a wallet to perform actions on behalf of a user.
@@ -51,50 +51,39 @@ export type GrantPermissionsReturnType = {
  */
 export async function grantPermissions(
   client: Client<Transport>,
-  parameters: GrantPermissionsParameters,
+  parameters: GrantPermissionsParameters
 ): Promise<GrantPermissionsReturnType> {
-  const { permissions } = parameters
+  const { permissions } = parameters;
   const result = await client.request(
     {
-      method: 'wallet_grantPermissions',
+      method: "wallet_grantPermissions",
       params: formatParameters({ permissions } as any),
     },
-    { retryCount: 0 },
-  )
-  return result as GrantPermissionsReturnType
+    { retryCount: 0 }
+  );
+  return result as GrantPermissionsReturnType;
 }
 
 function formatParameters(parameters: GrantPermissionsParameters) {
-  const { permissions } = parameters
+  const { permissions } = parameters;
 
-  return {
-    permissions: permissions.map((permission) => ({
-      ...permission,
-      chainId: numberToHex(permission.chainId),
-      policies: permission.policies.map((policy) => {
-        const data = (() => {
-          if (policy.type === 'token-allowance')
-            return {
-              allowance: numberToHex(policy.data.allowance),
-            }
-          if (policy.type === 'gas-limit')
-            return {
-              limit: numberToHex(policy.data.limit),
-            }
-          if (policy.type === 'native-token-spend-limit') {
-            return {
-              allowance: numberToHex(policy.data.allowance),
-            }
-          }
-          return policy.data
-        })()
+  return permissions.map((permission) => ({
+    ...permission,
+    chainId: numberToHex(permission.chainId),
+    permissions: permission.permissions.map((permission) => {
+      const data = (() => {
+        if (permission.type === "native-token-recurring-allowance")
+          return {
+            ...permission.data,
+            allowance: numberToHex(permission.data.allowance),
+          };
+        return permission.data;
+      })();
 
-        return {
-          data,
-          type:
-            typeof policy.type === 'string' ? policy.type : policy.type.custom,
-        }
-      }),
-    })),
-  }
+      return {
+        data,
+        type: permission.type,
+      };
+    }),
+  }));
 }
