@@ -56,24 +56,27 @@ export type NativeTokenRecurringAllowancePermission = {
     allowance: bigint
     cycleStart: number
     cycleDuration: number
-  },
+  }
 }
 
 export type AllowedContractPermission = {
   type: 'allowed-contract'
   data: {
     contract: Address
-  },
+  }
 }
 
 export type AllowedSelectorPermission = {
   type: 'allowed-selector'
   data: {
     selector: Hex
-  },
+  }
 }
 
-export type PermissionRequest = NativeTokenRecurringAllowancePermission | AllowedContractPermission | AllowedSelectorPermission
+export type PermissionRequest =
+  | NativeTokenRecurringAllowancePermission
+  | AllowedContractPermission
+  | AllowedSelectorPermission
 
 export type Permission = {
   permissions: readonly PermissionRequest[]

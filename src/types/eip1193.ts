@@ -132,17 +132,17 @@ export type WalletCallReceipt<quantity = Hex, status = Hex> = {
 }
 
 export type WalletGrantPermissionsParameters = {
-    account: Address
-    chainId: Hex
-    expiry: number
-    signer: {
-      type: string
-      data?: unknown
-    }
-    permissions: readonly {
-      data: unknown
-      type: string
-    }[]
+  account: Address
+  chainId: Hex
+  expiry: number
+  signer: {
+    type: string
+    data?: unknown
+  }
+  permissions: readonly {
+    data: unknown
+    type: string
+  }[]
 }
 
 export type WalletGrantPermissionsReturnType = {
