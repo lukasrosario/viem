@@ -1,14 +1,15 @@
-import type { Hex } from '../../../types/misc.js'
-import type { Client } from '../../../clients/createClient.js'
-import type { Transport } from '../../../clients/transports/createTransport.js'
-import type { Account, GetAccountParameter } from '../../../types/account.js'
-import type { OneOf } from '../../../types/utils.js'
-import type { ErrorType } from '../../../errors/utils.js'
 import { AccountNotFoundError } from '~viem/errors/account.js'
 import { parseAccount } from '../../../accounts/utils/parseAccount.js'
-import type { Chain } from '../../../types/chain.js'
-import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
+import type { Client } from '../../../clients/createClient.js'
+import type { Transport } from '../../../clients/transports/createTransport.js'
 import type { BaseError } from '../../../errors/base.js'
+import type { ErrorType } from '../../../errors/utils.js'
+import type { Account, GetAccountParameter } from '../../../types/account.js'
+import type { Chain } from '../../../types/chain.js'
+import type { Hex } from '../../../types/misc.js'
+import type { Address } from 'abitype'
+import { numberToHex } from '../../../utils/encoding/toHex.js'
+import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
 
 export type PrepareCallsParameters<
   account extends Account | undefined = Account | undefined,
@@ -17,8 +18,8 @@ export type PrepareCallsParameters<
   calls: {
     to: Hex
     data: Hex
-    value: Hex
-    chainId?: Hex
+    value: bigint | undefined
+    chainId: bigint | undefined
   }[]
   capabilities: {
     paymasterService: {
@@ -29,25 +30,28 @@ export type PrepareCallsParameters<
     }
   }
 } & GetAccountParameter<account>
-  
+
 export type PrepareCallsReturnType = [
   {
     data: {
       type: string
-      values: OneOf<
-        | {
-            to: Hex
-            data?: Hex | undefined
-            value?: bigint | undefined
-          }
-        | {
-            data: Hex
-          }
-      >[]
+      values: {
+        sender: Address
+        nonce: Hex
+        initCode: Hex
+        callData: Hex
+        callGasLimit: Hex
+        verificationGasLimit: Hex
+        preVerificationGas: Hex
+        maxFeePerGas: Hex
+        maxPriorityFeePerGas: Hex
+        paymasterAndData: Hex
+        signature: Hex
+      }[]
     }
     hash: Hex
     wrapper?: Record<string, any>
-  }
+  },
 ]
 
 export type PrepareCallsErrorType = ErrorType
@@ -90,17 +94,12 @@ export type PrepareCallsErrorType = ErrorType
  * })
  */
 export async function prepareCalls<
-  chain extends Chain | undefined,
   account extends Account | undefined = undefined,
 >(
-  client: Client<Transport, chain, account>,
+  client: Client<Transport, Chain, account>,
   parameters: PrepareCallsParameters<account>,
 ): Promise<PrepareCallsReturnType> {
-  const {
-    from: account_ = client.account,
-    calls,
-    capabilities,
-  } = parameters
+  const { from: account_ = client.account, calls, capabilities } = parameters
 
   if (!account_)
     throw new AccountNotFoundError({
@@ -109,18 +108,19 @@ export async function prepareCalls<
   const account = parseAccount(account_)
 
   try {
-    return await client.request(
-      {
-        method: 'wallet_prepareCalls',
-        params: [
-          {
-            from: account.address,
-            calls,
-            capabilities,
-          },
-        ],
-      }
-    )
+    return await client.request({
+      method: 'wallet_prepareCalls',
+      params: [
+        {
+          from: account.address,
+          calls: calls.map((call) => ({
+            ...call,
+            value: call.value ? numberToHex(call.value) : undefined,
+          })) as any,
+          capabilities,
+        },
+      ],
+    })
   } catch (err) {
     throw getTransactionError(err as BaseError, {
       ...parameters,

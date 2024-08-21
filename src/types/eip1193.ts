@@ -175,7 +175,7 @@ export type WalletGetActivePermissionsReturnType = {
 
 export type WalletPrepareCallsParameters<
   capabilities extends WalletCapabilities = WalletCapabilities,
-> = [ 
+> = [
   {
     from: Hex
     calls: {
