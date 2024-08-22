@@ -1,3 +1,4 @@
+import type { Address } from 'abitype'
 import { AccountNotFoundError } from '~viem/errors/account.js'
 import { parseAccount } from '../../../accounts/utils/parseAccount.js'
 import type { Client } from '../../../clients/createClient.js'
@@ -7,7 +8,6 @@ import type { ErrorType } from '../../../errors/utils.js'
 import type { Account, GetAccountParameter } from '../../../types/account.js'
 import type { Chain } from '../../../types/chain.js'
 import type { Hex } from '../../../types/misc.js'
-import type { Address } from 'abitype'
 import { numberToHex } from '../../../utils/encoding/toHex.js'
 import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
 
