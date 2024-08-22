@@ -132,7 +132,7 @@ export type WalletCallReceipt<quantity = Hex, status = Hex> = {
 }
 
 export type WalletGrantPermissionsParameters = {
-  account: Address
+  address: Address
   chainId: Hex
   expiry: number
   signer: {
