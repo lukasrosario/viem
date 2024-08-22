@@ -74,7 +74,7 @@ export type AllowedSelectorPermission = {
 }
 
 export type AllowedContractSelectorPermission = {
-  type: 'allowed-contract-selector',
+  type: 'allowed-contract-selector'
   data: {
     contract: Address
     selector: Hex
@@ -84,7 +84,8 @@ export type AllowedContractSelectorPermission = {
 export type PermissionRequest =
   | NativeTokenRecurringAllowancePermission
   | AllowedContractPermission
-  | AllowedSelectorPermission | AllowedContractSelectorPermission
+  | AllowedSelectorPermission
+  | AllowedContractSelectorPermission
 
 export type Permission = {
   permissions: readonly PermissionRequest[]
