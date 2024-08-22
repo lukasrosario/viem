@@ -173,6 +173,40 @@ export type WalletGetActivePermissionsReturnType = {
   context: string
 }
 
+export type WalletPrepareCallsParameters<
+  capabilities extends WalletCapabilities = WalletCapabilities,
+> = [
+  {
+    from: Hex
+    calls: {
+      to: Address
+      data: Hex
+      value: Hex
+    }[]
+    capabilities?: capabilities | undefined
+  },
+]
+
+export type WalletPrepareCallsReturnType = [
+  {
+    data: {
+      type: string
+      values: OneOf<
+        | {
+            to: Address
+            data?: Hex | undefined
+            value?: Hex | undefined
+          }
+        | {
+            data: Hex
+          }
+      >[]
+    }
+    hash: Hex
+    wrapper?: Record<string, any>
+  },
+]
+
 export type WalletSendCallsParameters<
   capabilities extends WalletCapabilities = WalletCapabilities,
   chainId extends Hex | number = Hex,
@@ -1432,6 +1466,18 @@ export type WalletRpcSchema = [
     Method: 'wallet_revokePermissions'
     Parameters: [permissions: { eth_accounts: Record<string, any> }]
     ReturnType: null
+  },
+  /**
+   * @description Requests that the user tracks the token in their wallet. Returns a boolean indicating if the token was successfully added.
+   * @link https://eips.ethereum.org/EIPS/eip-747
+   * @example
+   * provider.request({ method: 'wallet_prepareCalls' })
+   * // => { ... }
+   */
+  {
+    Method: 'wallet_prepareCalls'
+    Parameters: WalletPrepareCallsParameters
+    ReturnType: Prettify<WalletPrepareCallsReturnType>
   },
   /**
    * @description Requests the connected wallet to send a batch of calls.
