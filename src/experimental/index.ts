@@ -90,11 +90,11 @@ export {
 export {
   type PrepareCallsParameters,
   type PrepareCallsReturnType,
-  prepareCalls
+  prepareCalls,
 } from './prepareCalls/actions/prepareCalls.js'
 
 export {
   type SendPreparedCallsParameters,
   type SendPreparedCallsReturnType,
-  sendPreparedCalls
+  sendPreparedCalls,
 } from './sendPreparedCalls/actions/sendPreparedCalls.js'

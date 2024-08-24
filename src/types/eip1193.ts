@@ -1489,7 +1489,6 @@ export type WalletRpcSchema = [
     Parameters: WalletPrepareCallsParameters
     ReturnType: Prettify<WalletPrepareCallsReturnType>
   },
-
   {
     Method: 'wallet_sendPreparedCalls'
     Parameters: WalletSendPreparedCallsParameters

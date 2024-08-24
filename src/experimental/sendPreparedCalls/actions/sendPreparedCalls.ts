@@ -7,9 +7,7 @@ import { ChainNotFoundError } from '../../../errors/chain.js'
 import type { ErrorType } from '../../../errors/utils.js'
 import type { Account, GetAccountParameter } from '../../../types/account.js'
 import type { Chain, GetChainParameter } from '../../../types/chain.js'
-import type {
-  WalletSendCallsParameters,
-} from '../../../types/eip1193.js'
+import type { WalletSendCallsParameters } from '../../../types/eip1193.js'
 import type { Hex } from '../../../types/misc.js'
 import type { RequestErrorType } from '../../../utils/buildRequest.js'
 import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
@@ -17,8 +15,8 @@ import { getTransactionError } from '../../../utils/errors/getTransactionError.j
 type PermissionsSignatureData = {
   type: 'permissions'
   values: {
-    hash: Hex,
-    signature: Hex,
+    hash: Hex
+    signature: Hex
     context: string
   }
 }
@@ -35,7 +33,7 @@ export type SendPreparedCallsParameters<
   signatureData: PermissionsSignatureData
   version?: WalletSendCallsParameters[number]['version'] | undefined
 } & GetAccountParameter<account> &
-GetChainParameter<chain, chainOverride>
+  GetChainParameter<chain, chainOverride>
 
 export type SendPreparedCallsReturnType = string
 
@@ -69,12 +67,14 @@ export async function sendPreparedCalls<
     return await client.request(
       {
         method: 'wallet_sendPreparedCalls',
-        params: [{
-          signatureData,
-          preparedCalls,
-          from: account.address,
-          version
-        }]
+        params: [
+          {
+            signatureData,
+            preparedCalls,
+            from: account.address,
+            version,
+          },
+        ],
       },
       { retryCount: 0 },
     )
