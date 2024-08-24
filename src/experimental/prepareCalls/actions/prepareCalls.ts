@@ -1,39 +1,28 @@
 import type { Address } from 'abitype'
-import { AccountNotFoundError } from '~viem/errors/account.js'
+import { AccountNotFoundError } from '../../../errors/account.js'
 import { parseAccount } from '../../../accounts/utils/parseAccount.js'
 import type { Client } from '../../../clients/createClient.js'
 import type { Transport } from '../../../clients/transports/createTransport.js'
 import type { BaseError } from '../../../errors/base.js'
 import type { ErrorType } from '../../../errors/utils.js'
-import type { Account, GetAccountParameter } from '../../../types/account.js'
+import type { Account } from '../../../types/account.js'
+import { ChainNotFoundError } from '../../../errors/chain.js'
 import type { Chain } from '../../../types/chain.js'
 import type { Hex } from '../../../types/misc.js'
 import { numberToHex } from '../../../utils/encoding/toHex.js'
 import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
+import type { SendCallsParameters } from '../../eip5792/actions/sendCalls.js'
 
 export type PrepareCallsParameters<
-  account extends Account | undefined = Account | undefined,
-> = {
-  from?: Hex
-  calls: {
-    to: Hex
-    data: Hex
-    value: bigint | undefined
-    chainId: bigint | undefined
-  }[]
-  capabilities: {
-    paymasterService: {
-      url: string
-    }
-    permissions: {
-      context: string
-    }
-  }
-} & GetAccountParameter<account>
+chain extends Chain | undefined = Chain | undefined,
+account extends Account | undefined = Account | undefined,
+chainOverride extends Chain | undefined = Chain | undefined,
+> = SendCallsParameters<chain, account, chainOverride>
+
 
 export type PrepareCallsReturnType = [
   {
-    data: {
+    preparedCalls: {
       type: string
       values: {
         sender: Address
@@ -49,8 +38,10 @@ export type PrepareCallsReturnType = [
         signature: Hex
       }[]
     }
-    hash: Hex
-    wrapper?: Record<string, any>
+    signatureRequest: {
+      hash: Hex
+      wrapper?: Record<string, any>
+    }
   },
 ]
 
@@ -94,18 +85,22 @@ export type PrepareCallsErrorType = ErrorType
  * })
  */
 export async function prepareCalls<
-  account extends Account | undefined = undefined,
+chain extends Chain | undefined,
+account extends Account | undefined = undefined,
+chainOverride extends Chain | undefined = undefined,
 >(
-  client: Client<Transport, Chain, account>,
-  parameters: PrepareCallsParameters<account>,
+  client: Client<Transport, chain, account>,
+  parameters: PrepareCallsParameters<chain, account, chainOverride>,
 ): Promise<PrepareCallsReturnType> {
-  const { from: account_ = client.account, calls, capabilities } = parameters
+  const { account: account_ = client.account, chain = client.chain, calls, capabilities, version = '1.0' } = parameters
 
   if (!account_)
     throw new AccountNotFoundError({
       docsPath: '/experimental/eip5792/sendCalls',
     })
   const account = parseAccount(account_)
+
+  if (!chain) throw new ChainNotFoundError()
 
   try {
     return await client.request({
@@ -117,7 +112,9 @@ export async function prepareCalls<
             ...call,
             value: call.value ? numberToHex(call.value) : undefined,
           })) as any,
+          chainId: numberToHex(chain!.id),
           capabilities,
+          version
         },
       ],
     })
@@ -125,6 +122,7 @@ export async function prepareCalls<
     throw getTransactionError(err as BaseError, {
       ...parameters,
       account,
+      chain: parameters.chain!
     })
   }
 }

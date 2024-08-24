@@ -11,7 +11,7 @@ export type GrantPermissionsParameters = {
 export type GrantPermissionsReturnType = {
   context: string
   permissions: readonly Permission[]
-}
+}[]
 
 /**
  * Request permissions from a wallet to perform actions on behalf of a user.

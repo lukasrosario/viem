@@ -148,7 +148,7 @@ export type WalletGrantPermissionsParameters = {
 export type WalletGrantPermissionsReturnType = {
   context: string
   permissions: readonly unknown[]
-}
+}[]
 
 export type WalletGetCallsStatusReturnType<quantity = Hex, status = Hex> = {
   status: 'PENDING' | 'CONFIRMED'
@@ -177,33 +177,43 @@ export type WalletPrepareCallsParameters<
   capabilities extends WalletCapabilities = WalletCapabilities,
 > = [
   {
-    from: Hex
+    from: Address
+    chainId: Hex
     calls: {
       to: Address
       data: Hex
       value: Hex
     }[]
     capabilities?: capabilities | undefined
+    version: string
   },
 ]
 
 export type WalletPrepareCallsReturnType = [
   {
-    data: {
+    preparedCalls: {
       type: string
-      values: OneOf<
-        | {
-            to: Address
-            data?: Hex | undefined
-            value?: Hex | undefined
-          }
-        | {
-            data: Hex
-          }
-      >[]
+      values: any
     }
-    hash: Hex
-    wrapper?: Record<string, any>
+    signatureRequest: {
+      hash: Hex
+      wrapper?: Record<string, any>
+    }
+  },
+]
+
+export type WalletSendPreparedCallsParameters = [
+  {
+    from: Address
+    version: string
+    preparedCalls: {
+      type: string
+      values: any
+    }
+    signatureData: {
+      type: string
+      values: any
+    }
   },
 ]
 
@@ -1478,6 +1488,12 @@ export type WalletRpcSchema = [
     Method: 'wallet_prepareCalls'
     Parameters: WalletPrepareCallsParameters
     ReturnType: Prettify<WalletPrepareCallsReturnType>
+  },
+
+  {
+    Method: 'wallet_sendPreparedCalls'
+    Parameters: WalletSendPreparedCallsParameters
+    ReturnType: string
   },
   /**
    * @description Requests the connected wallet to send a batch of calls.

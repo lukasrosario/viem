@@ -1,7 +1,7 @@
 {
-  "name": "viem",
+  "name": "@lukasrosario/viem",
   "description": "TypeScript Interface for Ethereum",
-  "version": "2.17.4-permissionedkeysalpha.12",
+  "version": "2.17.4-permissionedkeysalpha.16",
   "main": "./_cjs/index.js",
   "module": "./_esm/index.js",
   "types": "./_types/index.d.ts",
