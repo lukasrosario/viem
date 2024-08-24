@@ -15,7 +15,6 @@ import { getTransactionError } from '../../../utils/errors/getTransactionError.j
 type PermissionsSignatureData = {
   type: 'permissions'
   values: {
-    hash: Hex
     signature: Hex
     context: string
   }
