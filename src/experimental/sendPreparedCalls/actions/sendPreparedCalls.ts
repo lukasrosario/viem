@@ -9,8 +9,8 @@ import type { Account, GetAccountParameter } from '../../../types/account.js'
 import type { Chain, GetChainParameter } from '../../../types/chain.js'
 import type { WalletSendCallsParameters } from '../../../types/eip1193.js'
 import type { Hex } from '../../../types/misc.js'
-import { numberToHex } from '../../../utils/encoding/toHex.js'
 import type { RequestErrorType } from '../../../utils/buildRequest.js'
+import { numberToHex } from '../../../utils/encoding/toHex.js'
 import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
 
 export type SendPreparedCallsParameters<
