@@ -193,12 +193,13 @@ export type WalletPrepareCallsReturnType = [
   {
     preparedCalls: {
       type: string
-      values: any
+      data: any
     }
     signatureRequest: {
       hash: Hex
       wrapper?: Record<string, any>
     }
+    context?: Hex
   },
 ]
 
@@ -206,14 +207,13 @@ export type WalletSendPreparedCallsParameters = [
   {
     from: Address
     version: string
+    chainId: Hex
     preparedCalls: {
       type: string
       values: any
     }
-    signatureData: {
-      type: string
-      values: any
-    }
+    context?: Hex
+    signature: Hex
   },
 ]
 

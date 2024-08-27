@@ -9,16 +9,9 @@ import type { Account, GetAccountParameter } from '../../../types/account.js'
 import type { Chain, GetChainParameter } from '../../../types/chain.js'
 import type { WalletSendCallsParameters } from '../../../types/eip1193.js'
 import type { Hex } from '../../../types/misc.js'
+import { numberToHex } from '../../../utils/encoding/toHex.js'
 import type { RequestErrorType } from '../../../utils/buildRequest.js'
 import { getTransactionError } from '../../../utils/errors/getTransactionError.js'
-
-type PermissionsSignatureData = {
-  type: 'permissions'
-  values: {
-    signature: Hex
-    context: string
-  }
-}
 
 export type SendPreparedCallsParameters<
   chain extends Chain | undefined = Chain | undefined,
@@ -27,9 +20,10 @@ export type SendPreparedCallsParameters<
 > = {
   preparedCalls: {
     type: string
-    values: any
+    data: any
   }
-  signatureData: PermissionsSignatureData
+  context?: Hex
+  signature?: Hex
   version?: WalletSendCallsParameters[number]['version'] | undefined
 } & GetAccountParameter<account> &
   GetChainParameter<chain, chainOverride>
@@ -49,7 +43,8 @@ export async function sendPreparedCalls<
   const {
     account: account_ = client.account,
     preparedCalls,
-    signatureData,
+    signature,
+    context,
     chain = client.chain,
     version = '1.0',
   } = parameters
@@ -68,12 +63,14 @@ export async function sendPreparedCalls<
         method: 'wallet_sendPreparedCalls',
         params: [
           {
-            signatureData,
-            preparedCalls,
             from: account.address,
             version,
+            preparedCalls,
+            context,
+            signature,
+            chainId: numberToHex(chain!.id),
           },
-        ],
+        ] as any,
       },
       { retryCount: 0 },
     )

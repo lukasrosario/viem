@@ -1,4 +1,3 @@
-import type { Address } from 'abitype'
 import { parseAccount } from '../../../accounts/utils/parseAccount.js'
 import type { Client } from '../../../clients/createClient.js'
 import type { Transport } from '../../../clients/transports/createTransport.js'
@@ -23,24 +22,13 @@ export type PrepareCallsReturnType = [
   {
     preparedCalls: {
       type: string
-      values: {
-        sender: Address
-        nonce: Hex
-        initCode: Hex
-        callData: Hex
-        callGasLimit: Hex
-        verificationGasLimit: Hex
-        preVerificationGas: Hex
-        maxFeePerGas: Hex
-        maxPriorityFeePerGas: Hex
-        paymasterAndData: Hex
-        signature: Hex
-      }[]
+      data: any
     }
     signatureRequest: {
       hash: Hex
       wrapper?: Record<string, any>
     }
+    context?: Hex
   },
 ]
 
