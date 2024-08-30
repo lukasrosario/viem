@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
-import { accounts, localHttpUrl } from '~test/src/constants.js'
-import { testClient, walletClient } from '~test/src/utils.js'
+import { accounts } from '~test/src/constants.js'
+import { anvilMainnet } from '../../../test/src/anvil.js'
+import { blobData, kzg } from '../../../test/src/kzg.js'
 import { privateKeyToAccount } from '../../accounts/privateKeyToAccount.js'
 import { celo, mainnet } from '../../chains/index.js'
 import {
@@ -12,10 +13,15 @@ import {
   type TransactionRequestLegacy,
   createWalletClient,
   parseGwei,
+  stringToHex,
 } from '../../index.js'
+import type { TransactionRequestEIP4844 } from '../../types/transaction.js'
+import { toBlobs } from '../../utils/blob/toBlobs.js'
 import { mine } from '../index.js'
 import { prepareTransactionRequest } from './prepareTransactionRequest.js'
 import { signTransaction } from './signTransaction.js'
+
+const client = anvilMainnet.getClient()
 
 const sourceAccount = accounts[0]
 
@@ -25,25 +31,54 @@ const base = {
   nonce: 785,
 } satisfies TransactionRequestBase
 
+describe('eip4844', () => {
+  const baseEip4844 = {
+    ...base,
+    blobs: toBlobs({ data: stringToHex(blobData) }),
+    kzg,
+    maxFeePerBlobGas: parseGwei('20'),
+    to: '0x0000000000000000000000000000000000000000',
+    type: 'eip4844',
+  } as const satisfies TransactionRequestEIP4844
+
+  test.todo('default: json-rpc')
+
+  test('default: local', async () => {
+    const signature = await signTransaction(client, {
+      account: privateKeyToAccount(sourceAccount.privateKey),
+      ...baseEip4844,
+    })
+    expect(signature).toMatchSnapshot()
+  })
+
+  test('w/ prepareTransactionRequest', async () => {
+    const request = await prepareTransactionRequest(client, {
+      account: privateKeyToAccount(sourceAccount.privateKey),
+      ...baseEip4844,
+    })
+    const signature = await signTransaction(client, request)
+    expect(signature).toMatchSnapshot()
+  })
+})
+
 describe('eip1559', () => {
   const baseEip1559 = {
     ...base,
     type: 'eip1559',
   } as const satisfies TransactionRequestEIP1559
 
-  // TODO: Anvil seems to be broken with JSON-RPC signing. This test will fail when
-  // it is fixed upstream.
   test('default: json-rpc', async () => {
-    await expect(() =>
-      signTransaction(walletClient, {
-        account: sourceAccount.address,
-        ...baseEip1559,
-      }),
-    ).rejects.toThrowError()
+    const signature = await signTransaction(client, {
+      account: sourceAccount.address,
+      ...baseEip1559,
+    })
+    expect(signature).toMatchInlineSnapshot(
+      `"0x02f855018203118085023fcf074c825208808080c080a0377bbfa08e94c5e78aecb79096d2198c1493cb2f1947052c437e1f976cb2dbe4a017ce1425a8efbe51ff2e283bec62522824b2ebdaa503ce22409699097300458c"`,
+    )
   })
 
   test('default: local', async () => {
-    const signature = await signTransaction(walletClient, {
+    const signature = await signTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       ...baseEip1559,
     })
@@ -53,30 +88,30 @@ describe('eip1559', () => {
   })
 
   test('w/ prepareTransactionRequest', async () => {
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
-    const request_1 = await prepareTransactionRequest(walletClient, {
+    const request_1 = await prepareTransactionRequest(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       value: 1n,
     })
-    const signature_1 = await signTransaction(walletClient, request_1)
+    const signature_1 = await signTransaction(client, request_1)
     expect(signature_1.match(/^0x02/)).toBeTruthy()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
-    const request_2 = await prepareTransactionRequest(walletClient, {
+    const request_2 = await prepareTransactionRequest(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       maxFeePerGas: parseGwei('30'),
       value: 1n,
     })
-    const signature_2 = await signTransaction(walletClient, request_2)
+    const signature_2 = await signTransaction(client, request_2)
     expect(signature_2.match(/^0x02/)).toBeTruthy()
   })
 
   describe('minimal', () => {
     test('default (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           type: 'eip1559',
         }),
@@ -84,7 +119,7 @@ describe('eip1559', () => {
         '"0x02f84c0180808080808080c001a0db5b8a12b90b68aeb786379ac14219ac85934e833082dee6cf03fd912809224da06902cc208e3b14a056dca2005c96f59eae33118b899f642551a58cff09044c9a"',
       )
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           chain: mainnet,
           type: 'eip1559',
@@ -96,7 +131,7 @@ describe('eip1559', () => {
 
     test('w/ maxFeePerGas (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           maxFeePerGas: parseGwei('2'),
         }),
@@ -107,7 +142,7 @@ describe('eip1559', () => {
 
     test('w/ type (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           type: 'eip1559',
         }),
@@ -120,7 +155,7 @@ describe('eip1559', () => {
   describe('args', () => {
     test('accessList (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip1559,
           accessList: [
@@ -140,7 +175,7 @@ describe('eip1559', () => {
 
     test('data (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip1559,
           data: '0x1234',
@@ -152,7 +187,7 @@ describe('eip1559', () => {
 
     test('maxFeePerGas/maxPriorityFeePerGas', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip1559,
           maxFeePerGas: parseGwei('20'),
@@ -172,7 +207,7 @@ describe('eip2930', () => {
   } as const satisfies TransactionRequestEIP2930
 
   test.skip('default: json-rpc', async () => {
-    const signature = await signTransaction(walletClient, {
+    const signature = await signTransaction(client, {
       account: sourceAccount.address,
       ...baseEip2930,
     })
@@ -182,7 +217,7 @@ describe('eip2930', () => {
   })
 
   test('default: local', async () => {
-    const signature = await signTransaction(walletClient, {
+    const signature = await signTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       ...baseEip2930,
     })
@@ -192,20 +227,21 @@ describe('eip2930', () => {
   })
 
   test('w/ prepareTransactionRequest', async () => {
-    await mine(testClient, { blocks: 1 })
-    const request = await prepareTransactionRequest(walletClient, {
+    await mine(client, { blocks: 1 })
+    const request = await prepareTransactionRequest(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       value: 1n,
       type: 'eip2930',
     })
-    const signature = await signTransaction(walletClient, request)
+
+    const signature = await signTransaction(client, request)
     expect(signature.match(/^0x01/)).toBeTruthy()
   })
 
   describe('minimal', () => {
     test('w/ type (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           type: 'eip2930',
         }),
@@ -218,7 +254,7 @@ describe('eip2930', () => {
   describe('args', () => {
     test('accessList (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip2930,
           accessList: [
@@ -238,7 +274,7 @@ describe('eip2930', () => {
 
     test('data (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip2930,
           data: '0x1234',
@@ -250,7 +286,7 @@ describe('eip2930', () => {
 
     test('gasPrice (local)', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           ...baseEip2930,
           gasPrice: parseGwei('20'),
@@ -271,7 +307,7 @@ describe('legacy', () => {
 
   test('default', async () => {
     expect(
-      await signTransaction(walletClient, {
+      await signTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         ...baseLegacy,
       }),
@@ -281,20 +317,20 @@ describe('legacy', () => {
   })
 
   test('w/ prepareTransactionRequest', async () => {
-    await mine(testClient, { blocks: 1 })
-    const request = await prepareTransactionRequest(walletClient, {
+    await mine(client, { blocks: 1 })
+    const request = await prepareTransactionRequest(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       value: 1n,
       type: 'legacy',
     })
-    const signature = await signTransaction(walletClient, request)
+    const signature = await signTransaction(client, request)
     expect(signature.match(/^0xf8/)).toBeTruthy()
   })
 
   describe('minimal', () => {
     test('w/ type', async () => {
       expect(
-        await signTransaction(walletClient, {
+        await signTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           type: 'legacy',
         }),
@@ -306,7 +342,7 @@ describe('legacy', () => {
     describe('args', () => {
       test('data', async () => {
         expect(
-          await signTransaction(walletClient, {
+          await signTransaction(client, {
             account: privateKeyToAccount(sourceAccount.privateKey),
             ...baseLegacy,
             data: '0x1234',
@@ -318,7 +354,7 @@ describe('legacy', () => {
 
       test('gas', async () => {
         expect(
-          await signTransaction(walletClient, {
+          await signTransaction(client, {
             account: privateKeyToAccount(sourceAccount.privateKey),
             ...baseLegacy,
             gas: 21000n,
@@ -330,7 +366,7 @@ describe('legacy', () => {
 
       test('gasPrice', async () => {
         expect(
-          await signTransaction(walletClient, {
+          await signTransaction(client, {
             account: privateKeyToAccount(sourceAccount.privateKey),
             ...baseLegacy,
             gasPrice: parseGwei('20'),
@@ -343,25 +379,24 @@ describe('legacy', () => {
   })
 })
 
-describe('custom (cip42)', () => {
-  const walletClient = createWalletClient({
+describe('custom (cip64)', () => {
+  const client = createWalletClient({
     chain: celo,
-    transport: http(localHttpUrl),
+    transport: http(anvilMainnet.rpcUrl.http),
   })
 
   test('default', async () => {
     expect(
-      await signTransaction(walletClient, {
+      await signTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         chain: null,
         ...base,
         feeCurrency: '0x765de816845861e75a25fca122bb6898b8b1282a',
         maxFeePerGas: parseGwei('20'),
         maxPriorityFeePerGas: parseGwei('2'),
-        type: 'cip42',
       }),
     ).toMatchInlineSnapshot(
-      '"0x7cf8700182031184773594008504a817c80082520894765de816845861e75a25fca122bb6898b8b1282a8080808080c080a05076fb030517e3243dd38850c21923f4343ed429db3ab032178f2d8702cad17fa07e860ca7bc7c2f34ece898c3e6912dcef4608ad3fc0b76bf0d760dcb608a71b2"',
+      '"0x7bf86e0182031184773594008504a817c800825208808080c094765de816845861e75a25fca122bb6898b8b1282a01a0ea3e86b0fd53ada619406822e96cf0dcec1e73b7a8bba60ad355fc8a8f4780e0a0399581f2dbfacab4d301a42e8773f6db217630e861b7d56ccbd333d553a6bb9c"',
     )
   })
 })
@@ -370,15 +405,15 @@ describe('errors', () => {
   test('no account', async () => {
     await expect(() =>
       // @ts-expect-error
-      signTransaction(walletClient, {
+      signTransaction(client, {
         type: 'eip1559',
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "Could not find an Account to execute with this Action.
+      [AccountNotFoundError: Could not find an Account to execute with this Action.
       Please provide an Account with the \`account\` argument on the Action, or by supplying an \`account\` to the WalletClient.
 
-      Docs: https://viem.sh/docs/actions/wallet/signTransaction.html#account
-      Version: viem@1.0.2"
+      Docs: https://viem.sh/docs/actions/wallet/signTransaction#account
+      Version: viem@x.y.z]
     `)
   })
 })

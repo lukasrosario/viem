@@ -1,25 +1,19 @@
 import { getVersion } from './utils.js'
 
 type BaseErrorParameters = {
-  docsPath?: string
-  docsSlug?: string
-  metaMessages?: string[]
-} & (
-  | {
-      cause?: never
-      details?: string
-    }
-  | {
-      cause: BaseError | Error
-      details?: never
-    }
-)
+  cause?: BaseError | Error | undefined
+  details?: string | undefined
+  docsBaseUrl?: string | undefined
+  docsPath?: string | undefined
+  docsSlug?: string | undefined
+  metaMessages?: string[] | undefined
+}
 
 export type BaseErrorType = BaseError & { name: 'ViemError' }
 export class BaseError extends Error {
   details: string
-  docsPath?: string
-  metaMessages?: string[]
+  docsPath?: string | undefined
+  metaMessages?: string[] | undefined
   shortMessage: string
 
   override name = 'ViemError'
@@ -32,8 +26,8 @@ export class BaseError extends Error {
       args.cause instanceof BaseError
         ? args.cause.details
         : args.cause?.message
-        ? args.cause.message
-        : args.details!
+          ? args.cause.message
+          : args.details!
     const docsPath =
       args.cause instanceof BaseError
         ? args.cause.docsPath || args.docsPath
@@ -45,7 +39,7 @@ export class BaseError extends Error {
       ...(args.metaMessages ? [...args.metaMessages, ''] : []),
       ...(docsPath
         ? [
-            `Docs: https://viem.sh${docsPath}.html${
+            `Docs: ${args.docsBaseUrl ?? 'https://viem.sh'}${docsPath}${
               args.docsSlug ? `#${args.docsSlug}` : ''
             }`,
           ]
@@ -68,7 +62,10 @@ export class BaseError extends Error {
   }
 }
 
-function walk(err: unknown, fn?: (err: unknown) => boolean): unknown {
+function walk(
+  err: unknown,
+  fn?: ((err: unknown) => boolean) | undefined,
+): unknown {
   if (fn?.(err)) return err
   if (err && typeof err === 'object' && 'cause' in err)
     return walk(err.cause, fn)

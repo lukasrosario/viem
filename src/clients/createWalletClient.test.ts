@@ -1,6 +1,7 @@
 import { assertType, describe, expect, test, vi } from 'vitest'
 
-import { accounts, localWsUrl } from '~test/src/constants.js'
+import { accounts } from '~test/src/constants.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 import { privateKeyToAccount } from '../accounts/privateKeyToAccount.js'
 import type { JsonRpcAccount, PrivateKeyAccount } from '../accounts/types.js'
 import { localhost } from '../chains/index.js'
@@ -37,6 +38,7 @@ test('creates', () => {
       "addChain": [Function],
       "batch": undefined,
       "cacheTime": 4000,
+      "ccipRead": undefined,
       "chain": undefined,
       "deployContract": [Function],
       "extend": [Function],
@@ -91,6 +93,7 @@ describe('args: account', () => {
         "addChain": [Function],
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "deployContract": [Function],
         "extend": [Function],
@@ -139,6 +142,7 @@ describe('args: account', () => {
       {
         "account": {
           "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+          "nonceManager": undefined,
           "publicKey": "0x048318535b54105d4a7aae60c08fc45f9687181b4fdfc625bd1a753fa7397fed753547f11ca8696646f2f3acb08e31016afac23e630c5d11f59f61fef57b0d2aa5",
           "signMessage": [Function],
           "signTransaction": [Function],
@@ -149,6 +153,7 @@ describe('args: account', () => {
         "addChain": [Function],
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "deployContract": [Function],
         "extend": [Function],
@@ -198,6 +203,7 @@ describe('args: transport', () => {
         "addChain": [Function],
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "deployContract": [Function],
         "extend": [Function],
@@ -221,7 +227,7 @@ describe('args: transport', () => {
           "key": "custom",
           "name": "Custom Provider",
           "request": [Function],
-          "retryCount": 0,
+          "retryCount": 3,
           "retryDelay": 150,
           "timeout": undefined,
           "type": "custom",
@@ -245,6 +251,7 @@ describe('args: transport', () => {
         "addChain": [Function],
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "deployContract": [Function],
         "extend": [Function],
@@ -269,7 +276,7 @@ describe('args: transport', () => {
           "key": "http",
           "name": "HTTP JSON-RPC",
           "request": [Function],
-          "retryCount": 0,
+          "retryCount": 3,
           "retryDelay": 150,
           "timeout": 10000,
           "type": "http",
@@ -285,7 +292,7 @@ describe('args: transport', () => {
   test('webSocket', () => {
     const { uid, ...client } = createWalletClient({
       chain: localhost,
-      transport: webSocket(localWsUrl),
+      transport: webSocket(anvilMainnet.rpcUrl.ws),
     })
 
     expect(uid).toBeDefined()
@@ -295,6 +302,7 @@ describe('args: transport', () => {
         "addChain": [Function],
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -305,14 +313,8 @@ describe('args: transport', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -339,11 +341,12 @@ describe('args: transport', () => {
         "signTypedData": [Function],
         "switchChain": [Function],
         "transport": {
+          "getRpcClient": [Function],
           "getSocket": [Function],
           "key": "webSocket",
           "name": "WebSocket JSON-RPC",
           "request": [Function],
-          "retryCount": 0,
+          "retryCount": 3,
           "retryDelay": 150,
           "subscribe": [Function],
           "timeout": 10000,
@@ -376,6 +379,7 @@ test('extend', () => {
       "batch": undefined,
       "cacheTime": 4000,
       "call": [Function],
+      "ccipRead": undefined,
       "chain": {
         "fees": undefined,
         "formatters": undefined,
@@ -386,14 +390,8 @@ test('extend', () => {
           "name": "Ether",
           "symbol": "ETH",
         },
-        "network": "localhost",
         "rpcUrls": {
           "default": {
-            "http": [
-              "http://127.0.0.1:8545",
-            ],
-          },
-          "public": {
             "http": [
               "http://127.0.0.1:8545",
             ],
@@ -407,6 +405,7 @@ test('extend', () => {
       "createPendingTransactionFilter": [Function],
       "deployContract": [Function],
       "dropTransaction": [Function],
+      "dumpState": [Function],
       "estimateContractGas": [Function],
       "estimateFeesPerGas": [Function],
       "estimateGas": [Function],
@@ -415,12 +414,15 @@ test('extend', () => {
       "getAddresses": [Function],
       "getAutomine": [Function],
       "getBalance": [Function],
+      "getBlobBaseFee": [Function],
       "getBlock": [Function],
       "getBlockNumber": [Function],
       "getBlockTransactionCount": [Function],
       "getBytecode": [Function],
       "getChainId": [Function],
+      "getCode": [Function],
       "getContractEvents": [Function],
+      "getEip712Domain": [Function],
       "getEnsAddress": [Function],
       "getEnsAvatar": [Function],
       "getEnsName": [Function],
@@ -444,6 +446,7 @@ test('extend', () => {
       "increaseTime": [Function],
       "inspectTxpool": [Function],
       "key": "wallet",
+      "loadState": [Function],
       "mine": [Function],
       "multicall": [Function],
       "name": "Wallet Client",
@@ -485,15 +488,16 @@ test('extend', () => {
         "key": "http",
         "name": "HTTP JSON-RPC",
         "request": [Function],
-        "retryCount": 0,
+        "retryCount": 3,
         "retryDelay": 150,
         "timeout": 10000,
         "type": "http",
-        "url": undefined,
+        "url": "http://127.0.0.1:8545",
       },
       "type": "walletClient",
       "uninstallFilter": [Function],
       "verifyMessage": [Function],
+      "verifySiweMessage": [Function],
       "verifyTypedData": [Function],
       "waitForTransactionReceipt": [Function],
       "watchAsset": [Function],

@@ -17,9 +17,9 @@ import type {
   LocalAccount,
 } from './types.js'
 
-type GetAccountReturnType<TAccountSource extends AccountSource> =
-  | (TAccountSource extends Address ? JsonRpcAccount : never)
-  | (TAccountSource extends CustomSource ? LocalAccount : never)
+type GetAccountReturnType<accountSource extends AccountSource> =
+  | (accountSource extends Address ? JsonRpcAccount : never)
+  | (accountSource extends CustomSource ? LocalAccount : never)
 
 export type ToAccountErrorType =
   | InvalidAddressErrorType
@@ -31,25 +31,27 @@ export type ToAccountErrorType =
  *
  * @returns A Local Account.
  */
-export function toAccount<TAccountSource extends AccountSource>(
-  source: TAccountSource,
-): GetAccountReturnType<TAccountSource> {
+export function toAccount<accountSource extends AccountSource>(
+  source: accountSource,
+): GetAccountReturnType<accountSource> {
   if (typeof source === 'string') {
-    if (!isAddress(source)) throw new InvalidAddressError({ address: source })
+    if (!isAddress(source, { strict: false }))
+      throw new InvalidAddressError({ address: source })
     return {
       address: source,
       type: 'json-rpc',
-    } as GetAccountReturnType<TAccountSource>
+    } as GetAccountReturnType<accountSource>
   }
 
-  if (!isAddress(source.address))
+  if (!isAddress(source.address, { strict: false }))
     throw new InvalidAddressError({ address: source.address })
   return {
     address: source.address,
+    nonceManager: source.nonceManager,
     signMessage: source.signMessage,
     signTransaction: source.signTransaction,
     signTypedData: source.signTypedData,
     source: 'custom',
     type: 'local',
-  } as GetAccountReturnType<TAccountSource>
+  } as GetAccountReturnType<accountSource>
 }

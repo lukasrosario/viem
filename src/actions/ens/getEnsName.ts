@@ -9,13 +9,14 @@ import type { Prettify } from '../../types/utils.js'
 import {
   type GetChainContractAddressErrorType,
   getChainContractAddress,
-} from '../../utils/chain.js'
+} from '../../utils/chain/getChainContractAddress.js'
 import { type ToHexErrorType, toHex } from '../../utils/encoding/toHex.js'
 import { isNullUniversalResolverError } from '../../utils/ens/errors.js'
 import {
   type PacketToBytesErrorType,
   packetToBytes,
 } from '../../utils/ens/packetToBytes.js'
+import { getAction } from '../../utils/getAction.js'
 import {
   type ReadContractErrorType,
   type ReadContractParameters,
@@ -26,8 +27,12 @@ export type GetEnsNameParameters = Prettify<
   Pick<ReadContractParameters, 'blockNumber' | 'blockTag'> & {
     /** Address to get ENS name for. */
     address: Address
+    /** Universal Resolver gateway URLs to use for resolving CCIP-read requests. */
+    gatewayUrls?: string[] | undefined
+    /** Whether or not to throw errors propagated from the ENS Universal Resolver Contract. */
+    strict?: boolean | undefined
     /** Address of ENS Universal Resolver Contract. */
-    universalResolverAddress?: Address
+    universalResolverAddress?: Address | undefined
   }
 >
 
@@ -43,8 +48,8 @@ export type GetEnsNameErrorType =
 /**
  * Gets primary name for specified address.
  *
- * - Docs: https://viem.sh/docs/ens/actions/getEnsName.html
- * - Examples: https://stackblitz.com/github/wagmi-dev/viem/tree/main/examples/ens
+ * - Docs: https://viem.sh/docs/ens/actions/getEnsName
+ * - Examples: https://stackblitz.com/github/wevm/viem/tree/main/examples/ens
  *
  * Calls `reverse(bytes)` on ENS Universal Resolver Contract to "reverse resolve" the address to the primary ENS name.
  *
@@ -64,14 +69,16 @@ export type GetEnsNameErrorType =
  * const ensName = await getEnsName(client, {
  *   address: '0xd2135CfB216b74109775236E36d4b433F1DF507B',
  * })
- * // 'wagmi-dev.eth'
+ * // 'wevm.eth'
  */
-export async function getEnsName<TChain extends Chain | undefined>(
-  client: Client<Transport, TChain>,
+export async function getEnsName<chain extends Chain | undefined>(
+  client: Client<Transport, chain>,
   {
     address,
     blockNumber,
     blockTag,
+    gatewayUrls,
+    strict,
     universalResolverAddress: universalResolverAddress_,
   }: GetEnsNameParameters,
 ): Promise<GetEnsNameReturnType> {
@@ -91,16 +98,28 @@ export async function getEnsName<TChain extends Chain | undefined>(
 
   const reverseNode = `${address.toLowerCase().substring(2)}.addr.reverse`
   try {
-    const res = await readContract(client, {
+    const readContractParameters = {
       address: universalResolverAddress,
       abi: universalResolverReverseAbi,
       functionName: 'reverse',
       args: [toHex(packetToBytes(reverseNode))],
       blockNumber,
       blockTag,
-    })
-    return res[0]
+    } as const
+
+    const readContractAction = getAction(client, readContract, 'readContract')
+
+    const [name, resolvedAddress] = gatewayUrls
+      ? await readContractAction({
+          ...readContractParameters,
+          args: [...readContractParameters.args, gatewayUrls],
+        })
+      : await readContractAction(readContractParameters)
+
+    if (address.toLowerCase() !== resolvedAddress.toLowerCase()) return null
+    return name
   } catch (err) {
+    if (strict) throw err
     if (isNullUniversalResolverError(err, 'reverse')) return null
     throw err
   }

@@ -1,4 +1,4 @@
-import type { AbiEvent, AbiParameter } from 'abitype'
+import type { Abi, AbiEvent, AbiParameter } from 'abitype'
 
 import type { Hex } from '../types/misc.js'
 import { formatAbiItem, formatAbiParams } from '../utils/abi/formatAbiItem.js'
@@ -185,7 +185,10 @@ export type AbiErrorNotFoundErrorType = AbiErrorNotFoundError & {
 }
 export class AbiErrorNotFoundError extends BaseError {
   override name = 'AbiErrorNotFoundError'
-  constructor(errorName?: string, { docsPath }: { docsPath?: string } = {}) {
+  constructor(
+    errorName?: string | undefined,
+    { docsPath }: { docsPath?: string | undefined } = {},
+  ) {
     super(
       [
         `Error ${errorName ? `"${errorName}" ` : ''}not found on ABI.`,
@@ -260,7 +263,10 @@ export type AbiEventNotFoundErrorType = AbiEventNotFoundError & {
 }
 export class AbiEventNotFoundError extends BaseError {
   override name = 'AbiEventNotFoundError'
-  constructor(eventName?: string, { docsPath }: { docsPath?: string } = {}) {
+  constructor(
+    eventName?: string | undefined,
+    { docsPath }: { docsPath?: string | undefined } = {},
+  ) {
     super(
       [
         `Event ${eventName ? `"${eventName}" ` : ''}not found on ABI.`,
@@ -278,7 +284,10 @@ export type AbiFunctionNotFoundErrorType = AbiFunctionNotFoundError & {
 }
 export class AbiFunctionNotFoundError extends BaseError {
   override name = 'AbiFunctionNotFoundError'
-  constructor(functionName?: string, { docsPath }: { docsPath?: string } = {}) {
+  constructor(
+    functionName?: string | undefined,
+    { docsPath }: { docsPath?: string | undefined } = {},
+  ) {
     super(
       [
         `Function ${functionName ? `"${functionName}" ` : ''}not found on ABI.`,
@@ -328,6 +337,27 @@ export class AbiFunctionSignatureNotFoundError extends BaseError {
         docsPath,
       },
     )
+  }
+}
+
+export type AbiItemAmbiguityErrorType = AbiItemAmbiguityError & {
+  name: 'AbiItemAmbiguityError'
+}
+export class AbiItemAmbiguityError extends BaseError {
+  override name = 'AbiItemAmbiguityError'
+  constructor(
+    x: { abiItem: Abi[number]; type: string },
+    y: { abiItem: Abi[number]; type: string },
+  ) {
+    super('Found ambiguous types in overloaded ABI items.', {
+      metaMessages: [
+        `\`${x.type}\` in \`${formatAbiItem(x.abiItem)}\`, and`,
+        `\`${y.type}\` in \`${formatAbiItem(y.abiItem)}\``,
+        '',
+        'These types encode differently and cannot be distinguished at runtime.',
+        'Remove one of the ambiguous items in the ABI.',
+      ],
+    })
   }
 }
 

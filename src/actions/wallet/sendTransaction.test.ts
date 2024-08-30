@@ -1,24 +1,22 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { accounts, localHttpUrl } from '~test/src/constants.js'
-import {
-  anvilChain,
-  publicClient,
-  testClient,
-  walletClient,
-  walletClientWithAccount,
-} from '~test/src/utils.js'
+import { accounts } from '~test/src/constants.js'
+import { blobData, kzg } from '~test/src/kzg.js'
+import { anvilMainnet } from '../../../test/src/anvil.js'
 import { privateKeyToAccount } from '../../accounts/privateKeyToAccount.js'
 import { celo, localhost, mainnet, optimism } from '../../chains/index.js'
+
 import { createWalletClient } from '../../clients/createWalletClient.js'
 import { http } from '../../clients/transports/http.js'
-import { type Hex } from '../../types/misc.js'
-import { type TransactionSerializable } from '../../types/transaction.js'
-import { defineChain } from '../../utils/chain.js'
+import type { Hex } from '../../types/misc.js'
+import type { TransactionSerializable } from '../../types/transaction.js'
+import { toBlobs } from '../../utils/blob/toBlobs.js'
+import { defineChain } from '../../utils/chain/defineChain.js'
 import { concatHex } from '../../utils/data/concat.js'
 import { hexToNumber } from '../../utils/encoding/fromHex.js'
-import { toHex } from '../../utils/encoding/toHex.js'
+import { stringToHex, toHex } from '../../utils/encoding/toHex.js'
 import { toRlp } from '../../utils/encoding/toRlp.js'
+import { nonceManager } from '../../utils/index.js'
 import { parseEther } from '../../utils/unit/parseEther.js'
 import { parseGwei } from '../../utils/unit/parseGwei.js'
 import { estimateFeesPerGas } from '../public/estimateFeesPerGas.js'
@@ -26,80 +24,83 @@ import { getBalance } from '../public/getBalance.js'
 import { getBlock } from '../public/getBlock.js'
 import { getTransaction } from '../public/getTransaction.js'
 import { mine } from '../test/mine.js'
+import { reset } from '../test/reset.js'
 import { setBalance } from '../test/setBalance.js'
 import { setNextBlockBaseFeePerGas } from '../test/setNextBlockBaseFeePerGas.js'
 import { sendTransaction } from './sendTransaction.js'
+
+const client = anvilMainnet.getClient()
+const clientWithAccount = anvilMainnet.getClient({
+  account: accounts[0].address,
+})
 
 const sourceAccount = accounts[0]
 const targetAccount = accounts[1]
 
 async function setup() {
-  await setBalance(testClient, {
+  await setBalance(client, {
     address: sourceAccount.address,
     value: sourceAccount.balance,
   })
-  await setBalance(testClient, {
+  await setBalance(client, {
     address: targetAccount.address,
     value: targetAccount.balance,
   })
-  await setNextBlockBaseFeePerGas(testClient, {
+  await setNextBlockBaseFeePerGas(client, {
     baseFeePerGas: parseGwei('10'),
   })
-  await mine(testClient, { blocks: 1 })
+  await mine(client, { blocks: 1 })
 }
 
 test('sends transaction', async () => {
   await setup()
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
 
   expect(
-    await sendTransaction(walletClient, {
+    await sendTransaction(client, {
       account: sourceAccount.address,
       to: targetAccount.address,
       value: parseEther('1'),
     }),
   ).toBeDefined()
 
-  await mine(testClient, { blocks: 1 })
+  await mine(client, { blocks: 1 })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10001000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toBeLessThan(sourceAccount.balance)
 })
 
 test('sends transaction (w/ formatter)', async () => {
   await setup()
 
-  const chain = defineChain(
-    {
-      ...localhost,
-      id: 1,
+  const chain = defineChain({
+    ...localhost,
+    id: 1,
+    formatters: {
+      transactionRequest: celo.formatters!.transactionRequest,
     },
-    {
-      formatters: {
-        transactionRequest: celo.formatters!.transactionRequest,
-      },
-    },
-  )
+    serializers: undefined,
+  })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
 
   expect(
-    await sendTransaction(walletClient, {
+    await sendTransaction(client, {
       chain,
       account: sourceAccount.address,
       to: targetAccount.address,
@@ -107,18 +108,23 @@ test('sends transaction (w/ formatter)', async () => {
     }),
   ).toBeDefined()
 
-  await mine(testClient, { blocks: 1 })
+  await mine(client, { blocks: 1 })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10001000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toBeLessThan(sourceAccount.balance)
 })
 
 test('sends transaction (w/ serializer)', async () => {
   await setup()
+
+  await reset(client, {
+    blockNumber: anvilMainnet.forkBlockNumber,
+    jsonRpcUrl: anvilMainnet.forkUrl,
+  })
 
   const serializer = vi.fn(
     (
@@ -155,17 +161,16 @@ test('sends transaction (w/ serializer)', async () => {
     },
   )
 
-  const chain = defineChain(
-    { ...localhost, id: 1 },
-    {
-      serializers: {
-        transaction: serializer,
-      },
+  const chain = defineChain({
+    ...localhost,
+    id: 1,
+    serializers: {
+      transaction: serializer,
     },
-  )
+  })
 
   await expect(() =>
-    sendTransaction(walletClient, {
+    sendTransaction(client, {
       chain,
       account: privateKeyToAccount(sourceAccount.privateKey),
       to: targetAccount.address,
@@ -174,7 +179,7 @@ test('sends transaction (w/ serializer)', async () => {
   ).rejects.toThrowError()
 
   expect(serializer).toReturnWith(
-    '0x08f40182017985044eaf9900850719f11100825208809470997970c51812dc3a010c7d01b50e0d17dc79c8880de0b6b3a764000080c0',
+    '0x08f301820297843b9aca008502ae1107ec825208809470997970c51812dc3a010c7d01b50e0d17dc79c8880de0b6b3a764000080c0',
   )
 })
 
@@ -183,42 +188,42 @@ test.skip('sends transaction w/ no value', async () => {
   await setup()
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
 
   expect(
-    await sendTransaction(walletClient, {
+    await sendTransaction(client, {
       account: sourceAccount.address,
       to: targetAccount.address,
     }),
   ).toBeDefined()
 
-  await mine(testClient, { blocks: 1 })
+  await mine(client, { blocks: 1 })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toBeLessThan(sourceAccount.balance)
 })
 
 test('client chain mismatch', async () => {
-  const walletClient = createWalletClient({
+  const client = createWalletClient({
     chain: celo,
-    transport: http(localHttpUrl),
+    transport: http(anvilMainnet.rpcUrl.http),
   })
   await expect(() =>
-    sendTransaction(walletClient, {
+    sendTransaction(client, {
       account: sourceAccount.address,
       to: targetAccount.address,
       value: parseEther('1'),
     }),
   ).rejects.toThrowErrorMatchingInlineSnapshot(`
-    "The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 42220 – Celo).
+    [TransactionExecutionError: The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 42220 – Celo).
 
     Current Chain ID:  1
     Expected Chain ID: 42220 – Celo
@@ -228,7 +233,7 @@ test('client chain mismatch', async () => {
       to:     0x70997970c51812dc3a010c7d01b50e0d17dc79c8
       value:  1 ETH
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `)
 })
 
@@ -236,7 +241,7 @@ test('inferred account', async () => {
   await setup()
 
   expect(
-    await sendTransaction(walletClientWithAccount, {
+    await sendTransaction(clientWithAccount, {
       to: targetAccount.address,
       value: parseEther('1'),
       gas: 1_000_000n,
@@ -245,18 +250,18 @@ test('inferred account', async () => {
 })
 
 test('no chain', async () => {
-  const walletClient = createWalletClient({
-    transport: http(localHttpUrl),
+  const client = createWalletClient({
+    transport: http(anvilMainnet.rpcUrl.http),
   })
   await expect(() =>
     // @ts-expect-error
-    sendTransaction(walletClient, {
+    sendTransaction(client, {
       account: sourceAccount.address,
       to: targetAccount.address,
       value: parseEther('1'),
     }),
   ).rejects.toThrowErrorMatchingInlineSnapshot(`
-    "No chain was provided to the request.
+    [TransactionExecutionError: No chain was provided to the request.
     Please provide a chain with the \`chain\` argument on the Action, or by supplying a \`chain\` to WalletClient.
 
     Request Arguments:
@@ -264,7 +269,7 @@ test('no chain', async () => {
       to:     0x70997970c51812dc3a010c7d01b50e0d17dc79c8
       value:  1 ETH
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `)
 })
 
@@ -273,14 +278,14 @@ describe('args: gas', () => {
     await setup()
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -288,13 +293,13 @@ describe('args: gas', () => {
       }),
     ).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 })
@@ -303,17 +308,17 @@ describe('args: gasPrice', () => {
   test('sends transaction', async () => {
     await setup()
 
-    const block = await getBlock(publicClient)
+    const block = await getBlock(client)
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -321,23 +326,23 @@ describe('args: gasPrice', () => {
       }),
     ).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 
   test('errors when account has insufficient funds', async () => {
     await setup()
 
-    const block = await getBlock(publicClient)
+    const block = await getBlock(client)
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -345,7 +350,7 @@ describe('args: gasPrice', () => {
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
       `
-      "The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
+      [TransactionExecutionError: The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
 
       This error could arise when the account does not have enough funds to:
        - pay for the total gas fee,
@@ -363,7 +368,7 @@ describe('args: gasPrice', () => {
         gasPrice:  10000000000010 gwei
 
       Details: Insufficient funds for gas * price + value
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `,
     )
   })
@@ -373,16 +378,16 @@ describe('args: maxFeePerGas', () => {
   test('sends transaction', async () => {
     await setup()
 
-    const block = await getBlock(publicClient)
+    const block = await getBlock(client)
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    const hash = await sendTransaction(walletClient, {
+    const hash = await sendTransaction(client, {
       account: sourceAccount.address,
       to: targetAccount.address,
       value: parseEther('1'),
@@ -390,16 +395,16 @@ describe('args: maxFeePerGas', () => {
     })
     expect(hash).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
 
-    const transaction = await getTransaction(publicClient, { hash })
+    const transaction = await getTransaction(client, { hash })
     expect(transaction.maxFeePerGas).toBe(
       BigInt((block.baseFeePerGas ?? 0n) * 2n),
     )
@@ -408,10 +413,10 @@ describe('args: maxFeePerGas', () => {
   test('errors when account has insufficient funds', async () => {
     await setup()
 
-    const block = await getBlock(publicClient)
+    const block = await getBlock(client)
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -419,7 +424,7 @@ describe('args: maxFeePerGas', () => {
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
       `
-      "The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
+      [TransactionExecutionError: The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
 
       This error could arise when the account does not have enough funds to:
        - pay for the total gas fee,
@@ -437,7 +442,7 @@ describe('args: maxFeePerGas', () => {
         maxFeePerGas:  10000000000010 gwei
 
       Details: Insufficient funds for gas * price + value
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `,
     )
   })
@@ -448,14 +453,14 @@ describe('args: maxPriorityFeePerGas', () => {
     await setup()
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -463,30 +468,30 @@ describe('args: maxPriorityFeePerGas', () => {
       }),
     ).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 
   test('maxPriorityFeePerGas + maxFeePerGas: sends transaction', async () => {
     await setup()
 
-    const block = await getBlock(publicClient)
+    const block = await getBlock(client)
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -495,13 +500,13 @@ describe('args: maxPriorityFeePerGas', () => {
       }),
     ).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 })
@@ -510,20 +515,20 @@ describe('args: nonce', () => {
   test('sends transaction', async () => {
     await setup()
 
-    const transactionCount = (await publicClient.request({
+    const transactionCount = (await client.request({
       method: 'eth_getTransactionCount',
       params: [sourceAccount.address, 'latest'],
     }))!
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -531,13 +536,13 @@ describe('args: nonce', () => {
       }),
     ).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 })
@@ -545,8 +550,8 @@ describe('args: nonce', () => {
 describe('args: chain', async () => {
   test('default', async () => {
     expect(
-      await sendTransaction(walletClient, {
-        chain: anvilChain,
+      await sendTransaction(client, {
+        chain: anvilMainnet.chain,
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -556,7 +561,7 @@ describe('args: chain', async () => {
 
   test('nullish', async () => {
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         chain: null,
         account: sourceAccount.address,
         to: targetAccount.address,
@@ -567,14 +572,14 @@ describe('args: chain', async () => {
 
   test('chain mismatch', async () => {
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         chain: optimism,
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 10 – OP Mainnet).
+      [TransactionExecutionError: The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 10 – OP Mainnet).
 
       Current Chain ID:  1
       Expected Chain ID: 10 – OP Mainnet
@@ -585,7 +590,7 @@ describe('args: chain', async () => {
         to:     0x70997970c51812dc3a010c7d01b50e0d17dc79c8
         value:  1 ETH
 
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 })
@@ -594,32 +599,32 @@ describe('local account', () => {
   test('default', async () => {
     await setup()
 
-    const fees = await estimateFeesPerGas(publicClient)
+    const fees = await estimateFeesPerGas(client)
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    const hash = await sendTransaction(walletClient, {
+    const hash = await sendTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       to: targetAccount.address,
       value: parseEther('1'),
     })
     expect(hash).toBeDefined()
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
 
-    const transaction = await getTransaction(publicClient, { hash })
+    const transaction = await getTransaction(client, { hash })
     expect(transaction.maxFeePerGas).toBe(fees.maxFeePerGas)
     expect(transaction.maxPriorityFeePerGas).toBe(fees.maxPriorityFeePerGas)
     expect(transaction.gas).toBe(21000n)
@@ -629,33 +634,33 @@ describe('local account', () => {
     await setup()
 
     expect(
-      await sendTransaction(walletClient, {
+      await sendTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         to: targetAccount.address,
       }),
     ).toBeDefined()
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
   })
 
   test('args: gas', async () => {
     await setup()
 
-    const hash = await sendTransaction(walletClient, {
+    const hash = await sendTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       to: targetAccount.address,
       value: parseEther('1'),
@@ -663,22 +668,22 @@ describe('local account', () => {
     })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
 
-    const transaction = await getTransaction(publicClient, { hash })
+    const transaction = await getTransaction(client, { hash })
     expect(transaction.gas).toBe(1_000_000n)
   })
 
@@ -686,29 +691,29 @@ describe('local account', () => {
     await setup()
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    const hash = await sendTransaction(walletClient, {
+    const hash = await sendTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       chain: mainnet,
       to: targetAccount.address,
       value: parseEther('1'),
     })
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
 
-    const transaction = await getTransaction(publicClient, { hash })
+    const transaction = await getTransaction(client, { hash })
     expect(transaction.chainId).toBe(1)
   })
 
@@ -716,29 +721,29 @@ describe('local account', () => {
     await setup()
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toMatchInlineSnapshot('10000000000000000000000n')
 
-    const hash = await sendTransaction(walletClient, {
+    const hash = await sendTransaction(client, {
       account: privateKeyToAccount(sourceAccount.privateKey),
       chain: null,
       to: targetAccount.address,
       value: parseEther('1'),
     })
 
-    await mine(testClient, { blocks: 1 })
+    await mine(client, { blocks: 1 })
 
     expect(
-      await getBalance(publicClient, { address: targetAccount.address }),
+      await getBalance(client, { address: targetAccount.address }),
     ).toMatchInlineSnapshot('10001000000000000000000n')
     expect(
-      await getBalance(publicClient, { address: sourceAccount.address }),
+      await getBalance(client, { address: sourceAccount.address }),
     ).toBeLessThan(sourceAccount.balance)
 
-    const transaction = await getTransaction(publicClient, { hash })
+    const transaction = await getTransaction(client, { hash })
     expect(transaction.chainId).toBe(1)
   })
 
@@ -746,16 +751,16 @@ describe('local account', () => {
     test('sends transaction', async () => {
       await setup()
 
-      const fees = await estimateFeesPerGas(publicClient)
+      const fees = await estimateFeesPerGas(client)
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
 
-      const hash = await sendTransaction(walletClient, {
+      const hash = await sendTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         to: targetAccount.address,
         value: parseEther('1'),
@@ -763,26 +768,26 @@ describe('local account', () => {
       })
       expect(hash).toBeDefined()
 
-      await mine(testClient, { blocks: 1 })
+      await mine(client, { blocks: 1 })
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10001000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toBeLessThan(sourceAccount.balance)
 
-      const transaction = await getTransaction(publicClient, { hash })
+      const transaction = await getTransaction(client, { hash })
       expect(transaction.maxFeePerGas).toBe(fees.maxFeePerGas)
     })
 
     test('errors when account has insufficient funds', async () => {
       await setup()
 
-      const block = await getBlock(publicClient)
+      const block = await getBlock(client)
 
       await expect(() =>
-        sendTransaction(walletClient, {
+        sendTransaction(client, {
           account: privateKeyToAccount(sourceAccount.privateKey),
           to: targetAccount.address,
           value: parseEther('1'),
@@ -790,7 +795,7 @@ describe('local account', () => {
         }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(
         `
-        "The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
+        [TransactionExecutionError: The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
 
         This error could arise when the account does not have enough funds to:
          - pay for the total gas fee,
@@ -808,24 +813,31 @@ describe('local account', () => {
           maxFeePerGas:  10000000000010 gwei
 
         Details: Insufficient funds for gas * price + value
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `,
       )
     })
+  })
+
+  test('args: blobs', async () => {
+    const blobs = toBlobs({
+      data: stringToHex(blobData),
+    })
+    const hash = await sendTransaction(client, {
+      account: privateKeyToAccount(accounts[0].privateKey),
+      blobs,
+      kzg,
+      maxFeePerBlobGas: parseGwei('30'),
+      to: '0x0000000000000000000000000000000000000000',
+    })
+    expect(hash).toBeDefined()
   })
 
   describe('args: maxPriorityFeePerGas', () => {
     test('sends transaction', async () => {
       await setup()
 
-      expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
-      ).toMatchInlineSnapshot('10000000000000000000000n')
-      expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
-      ).toMatchInlineSnapshot('10000000000000000000000n')
-
-      const hash = await sendTransaction(walletClient, {
+      const hash = await sendTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         to: targetAccount.address,
         value: parseEther('1'),
@@ -833,32 +845,32 @@ describe('local account', () => {
       })
       expect(hash).toBeDefined()
 
-      await mine(testClient, { blocks: 1 })
+      await mine(client, { blocks: 1 })
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10001000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toBeLessThan(sourceAccount.balance)
 
-      const transaction = await getTransaction(publicClient, { hash })
+      const transaction = await getTransaction(client, { hash })
       expect(transaction.maxPriorityFeePerGas).toBe(parseGwei('5'))
     })
 
     test('maxPriorityFeePerGas + maxFeePerGas: sends transaction', async () => {
       await setup()
 
-      const block = await getBlock(publicClient)
+      const block = await getBlock(client)
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
 
-      const hash = await sendTransaction(walletClient, {
+      const hash = await sendTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         to: targetAccount.address,
         value: parseEther('1'),
@@ -867,16 +879,16 @@ describe('local account', () => {
       })
       expect(hash).toBeDefined()
 
-      await mine(testClient, { blocks: 1 })
+      await mine(client, { blocks: 1 })
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10001000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toBeLessThan(sourceAccount.balance)
 
-      const transaction = await getTransaction(publicClient, { hash })
+      const transaction = await getTransaction(client, { hash })
       expect(transaction.maxPriorityFeePerGas).toBe(parseGwei('10'))
       expect(transaction.maxFeePerGas).toBe(
         BigInt(block.baseFeePerGas ?? 0) + parseGwei('10'),
@@ -888,19 +900,19 @@ describe('local account', () => {
     test('sends transaction', async () => {
       await setup()
 
-      const transactionCount = (await publicClient.request({
+      const transactionCount = (await client.request({
         method: 'eth_getTransactionCount',
         params: [sourceAccount.address, 'pending'],
       }))!
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toMatchInlineSnapshot('10000000000000000000000n')
 
-      const hash = await sendTransaction(walletClient, {
+      const hash = await sendTransaction(client, {
         account: privateKeyToAccount(sourceAccount.privateKey),
         to: targetAccount.address,
         value: parseEther('1'),
@@ -908,17 +920,78 @@ describe('local account', () => {
       })
       expect(hash).toBeDefined()
 
-      await mine(testClient, { blocks: 1 })
+      await mine(client, { blocks: 1 })
 
       expect(
-        await getBalance(publicClient, { address: targetAccount.address }),
+        await getBalance(client, { address: targetAccount.address }),
       ).toMatchInlineSnapshot('10001000000000000000000n')
       expect(
-        await getBalance(publicClient, { address: sourceAccount.address }),
+        await getBalance(client, { address: sourceAccount.address }),
       ).toBeLessThan(sourceAccount.balance)
 
-      const transaction = await getTransaction(publicClient, { hash })
+      const transaction = await getTransaction(client, { hash })
       expect(transaction.nonce).toBe(hexToNumber(transactionCount))
+    })
+  })
+
+  describe('behavior: nonceManager', async () => {
+    test('default', async () => {
+      await setup()
+
+      const account_1 = privateKeyToAccount(sourceAccount.privateKey, {
+        nonceManager,
+      })
+      const account_2 = privateKeyToAccount(targetAccount.privateKey, {
+        nonceManager,
+      })
+
+      const [hash_1, hash_2, hash_3, hash_4, hash_5] = await Promise.all([
+        sendTransaction(client, {
+          account: account_1,
+          to: targetAccount.address,
+          value: parseEther('1'),
+        }),
+        sendTransaction(client, {
+          account: account_2,
+          to: targetAccount.address,
+          value: parseEther('1'),
+        }),
+        sendTransaction(client, {
+          account: account_1,
+          to: targetAccount.address,
+          value: parseEther('1'),
+        }),
+        sendTransaction(client, {
+          account: account_1,
+          to: targetAccount.address,
+          value: parseEther('1'),
+        }),
+        sendTransaction(client, {
+          account: account_2,
+          to: targetAccount.address,
+          value: parseEther('1'),
+        }),
+      ])
+
+      expect((await getTransaction(client, { hash: hash_1 })).nonce).toBe(679)
+      expect((await getTransaction(client, { hash: hash_2 })).nonce).toBe(112)
+      expect((await getTransaction(client, { hash: hash_3 })).nonce).toBe(680)
+      expect((await getTransaction(client, { hash: hash_4 })).nonce).toBe(681)
+      expect((await getTransaction(client, { hash: hash_5 })).nonce).toBe(113)
+
+      const hash_6 = await sendTransaction(client, {
+        account: account_1,
+        to: targetAccount.address,
+        value: parseEther('1'),
+      })
+      const hash_7 = await sendTransaction(client, {
+        account: account_1,
+        to: targetAccount.address,
+        value: parseEther('1'),
+      })
+
+      expect((await getTransaction(client, { hash: hash_6 })).nonce).toBe(682)
+      expect((await getTransaction(client, { hash: hash_7 })).nonce).toBe(683)
     })
   })
 })
@@ -927,17 +1000,17 @@ describe('errors', () => {
   test('no account', async () => {
     await expect(() =>
       // @ts-expect-error
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         to: targetAccount.address,
         value: parseEther('1'),
         maxFeePerGas: 2n ** 256n - 1n + 1n,
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "Could not find an Account to execute with this Action.
+      [AccountNotFoundError: Could not find an Account to execute with this Action.
       Please provide an Account with the \`account\` argument on the Action, or by supplying an \`account\` to the WalletClient.
 
-      Docs: https://viem.sh/docs/actions/wallet/sendTransaction.html#account
-      Version: viem@1.0.2"
+      Docs: https://viem.sh/docs/actions/wallet/sendTransaction#account
+      Version: viem@x.y.z]
     `)
   })
 
@@ -945,14 +1018,14 @@ describe('errors', () => {
     await setup()
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
         maxFeePerGas: 2n ** 256n - 1n + 1n,
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "The fee cap (\`maxFeePerGas\` = 115792089237316195423570985008687907853269984665640564039457584007913.129639936 gwei) cannot be higher than the maximum allowed value (2^256-1).
+      [TransactionExecutionError: The fee cap (\`maxFeePerGas\` = 115792089237316195423570985008687907853269984665640564039457584007913.129639936 gwei) cannot be higher than the maximum allowed value (2^256-1).
 
       Request Arguments:
         from:          0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
@@ -960,7 +1033,7 @@ describe('errors', () => {
         value:         1 ETH
         maxFeePerGas:  115792089237316195423570985008687907853269984665640564039457584007913.129639936 gwei
 
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 
@@ -968,14 +1041,14 @@ describe('errors', () => {
     await setup()
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
         gas: 100n,
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "The amount of gas (100) provided for the transaction is too low.
+      [TransactionExecutionError: The amount of gas (100) provided for the transaction is too low.
 
       Request Arguments:
         from:   0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
@@ -984,7 +1057,7 @@ describe('errors', () => {
         gas:    100
 
       Details: intrinsic gas too low
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 
@@ -992,14 +1065,14 @@ describe('errors', () => {
     await setup()
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
         gas: 100_000_000n,
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "The amount of gas (100000000) provided for the transaction exceeds the limit allowed for the block.
+      [TransactionExecutionError: The amount of gas (100000000) provided for the transaction exceeds the limit allowed for the block.
 
       Request Arguments:
         from:   0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
@@ -1008,7 +1081,7 @@ describe('errors', () => {
         gas:    100000000
 
       Details: intrinsic gas too high -- tx.gas_limit > env.block.gas_limit
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 
@@ -1016,7 +1089,7 @@ describe('errors', () => {
     await setup()
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -1024,7 +1097,7 @@ describe('errors', () => {
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
       `
-      "The fee cap (\`maxFeePerGas\` = 0.000000001 gwei) cannot be lower than the block base fee.
+      [TransactionExecutionError: The fee cap (\`maxFeePerGas\` = 0.000000001 gwei) cannot be lower than the block base fee.
 
       Request Arguments:
         from:          0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
@@ -1033,21 +1106,21 @@ describe('errors', () => {
         maxFeePerGas:  0.000000001 gwei
 
       Details: max fee per gas less than block base fee
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `,
     )
   })
 
   test('nonce too low', async () => {
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
         nonce: 1,
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "Nonce provided for the transaction (1) is lower than the current nonce of the account.
+      [TransactionExecutionError: Nonce provided for the transaction (1) is lower than the current nonce of the account.
       Try increasing the nonce or find the latest nonce with \`getTransactionCount\`.
 
       Request Arguments:
@@ -1057,7 +1130,7 @@ describe('errors', () => {
         nonce:  1
 
       Details: nonce too low
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 
@@ -1065,13 +1138,13 @@ describe('errors', () => {
     await setup()
 
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('100000'),
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(`
-      "The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
+      [TransactionExecutionError: The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.
 
       This error could arise when the account does not have enough funds to:
        - pay for the total gas fee,
@@ -1088,13 +1161,13 @@ describe('errors', () => {
         value:  100000 ETH
 
       Details: Insufficient funds for gas * price + value
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `)
   })
 
   test('tip higher than fee cap', async () => {
     await expect(() =>
-      sendTransaction(walletClient, {
+      sendTransaction(client, {
         account: sourceAccount.address,
         to: targetAccount.address,
         value: parseEther('1'),
@@ -1103,7 +1176,7 @@ describe('errors', () => {
       }),
     ).rejects.toThrowErrorMatchingInlineSnapshot(
       `
-      "The provided tip (\`maxPriorityFeePerGas\` = 11 gwei) cannot be higher than the fee cap (\`maxFeePerGas\` = 10 gwei).
+      [TransactionExecutionError: The provided tip (\`maxPriorityFeePerGas\` = 11 gwei) cannot be higher than the fee cap (\`maxFeePerGas\` = 10 gwei).
 
       Request Arguments:
         from:                  0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
@@ -1112,7 +1185,7 @@ describe('errors', () => {
         maxFeePerGas:          10 gwei
         maxPriorityFeePerGas:  11 gwei
 
-      Version: viem@1.0.2"
+      Version: viem@x.y.z]
     `,
     )
   })

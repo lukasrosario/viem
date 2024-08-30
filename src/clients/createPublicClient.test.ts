@@ -1,8 +1,8 @@
 import { assertType, describe, expect, test, vi } from 'vitest'
 
-import { localWsUrl } from '~test/src/constants.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 import { localhost } from '../chains/index.js'
-import { type EIP1193RequestFn, type PublicRpcSchema } from '../index.js'
+import type { EIP1193RequestFn, PublicRpcSchema } from '../index.js'
 import { createPublicClient } from './createPublicClient.js'
 import { testActions } from './decorators/test.js'
 import { walletActions } from './decorators/wallet.js'
@@ -33,6 +33,7 @@ test('creates', () => {
       "batch": undefined,
       "cacheTime": 4000,
       "call": [Function],
+      "ccipRead": undefined,
       "chain": undefined,
       "createBlockFilter": [Function],
       "createContractEventFilter": [Function],
@@ -44,12 +45,15 @@ test('creates', () => {
       "estimateMaxPriorityFeePerGas": [Function],
       "extend": [Function],
       "getBalance": [Function],
+      "getBlobBaseFee": [Function],
       "getBlock": [Function],
       "getBlockNumber": [Function],
       "getBlockTransactionCount": [Function],
       "getBytecode": [Function],
       "getChainId": [Function],
+      "getCode": [Function],
       "getContractEvents": [Function],
+      "getEip712Domain": [Function],
       "getEnsAddress": [Function],
       "getEnsAvatar": [Function],
       "getEnsName": [Function],
@@ -87,6 +91,7 @@ test('creates', () => {
       "type": "publicClient",
       "uninstallFilter": [Function],
       "verifyMessage": [Function],
+      "verifySiweMessage": [Function],
       "verifyTypedData": [Function],
       "waitForTransactionReceipt": [Function],
       "watchBlockNumber": [Function],
@@ -148,6 +153,7 @@ describe('transports', () => {
         "batch": undefined,
         "cacheTime": 4000,
         "call": [Function],
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -158,14 +164,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -183,12 +183,15 @@ describe('transports', () => {
         "estimateMaxPriorityFeePerGas": [Function],
         "extend": [Function],
         "getBalance": [Function],
+        "getBlobBaseFee": [Function],
         "getBlock": [Function],
         "getBlockNumber": [Function],
         "getBlockTransactionCount": [Function],
         "getBytecode": [Function],
         "getChainId": [Function],
+        "getCode": [Function],
         "getContractEvents": [Function],
+        "getEip712Domain": [Function],
         "getEnsAddress": [Function],
         "getEnsAvatar": [Function],
         "getEnsName": [Function],
@@ -223,11 +226,12 @@ describe('transports', () => {
           "retryDelay": 150,
           "timeout": 10000,
           "type": "http",
-          "url": undefined,
+          "url": "http://127.0.0.1:8545",
         },
         "type": "publicClient",
         "uninstallFilter": [Function],
         "verifyMessage": [Function],
+        "verifySiweMessage": [Function],
         "verifyTypedData": [Function],
         "waitForTransactionReceipt": [Function],
         "watchBlockNumber": [Function],
@@ -242,7 +246,7 @@ describe('transports', () => {
   test('webSocket', () => {
     const { uid, ...client } = createPublicClient({
       chain: localhost,
-      transport: webSocket(localWsUrl),
+      transport: webSocket(anvilMainnet.rpcUrl.ws),
     })
 
     expect(uid).toBeDefined()
@@ -252,6 +256,7 @@ describe('transports', () => {
         "batch": undefined,
         "cacheTime": 4000,
         "call": [Function],
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -262,14 +267,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -287,12 +286,15 @@ describe('transports', () => {
         "estimateMaxPriorityFeePerGas": [Function],
         "extend": [Function],
         "getBalance": [Function],
+        "getBlobBaseFee": [Function],
         "getBlock": [Function],
         "getBlockNumber": [Function],
         "getBlockTransactionCount": [Function],
         "getBytecode": [Function],
         "getChainId": [Function],
+        "getCode": [Function],
         "getContractEvents": [Function],
+        "getEip712Domain": [Function],
         "getEnsAddress": [Function],
         "getEnsAvatar": [Function],
         "getEnsName": [Function],
@@ -319,6 +321,7 @@ describe('transports', () => {
         "sendRawTransaction": [Function],
         "simulateContract": [Function],
         "transport": {
+          "getRpcClient": [Function],
           "getSocket": [Function],
           "key": "webSocket",
           "name": "WebSocket JSON-RPC",
@@ -332,6 +335,7 @@ describe('transports', () => {
         "type": "publicClient",
         "uninstallFilter": [Function],
         "verifyMessage": [Function],
+        "verifySiweMessage": [Function],
         "verifyTypedData": [Function],
         "waitForTransactionReceipt": [Function],
         "watchBlockNumber": [Function],
@@ -355,6 +359,7 @@ describe('transports', () => {
         "batch": undefined,
         "cacheTime": 4000,
         "call": [Function],
+        "ccipRead": undefined,
         "chain": undefined,
         "createBlockFilter": [Function],
         "createContractEventFilter": [Function],
@@ -366,12 +371,15 @@ describe('transports', () => {
         "estimateMaxPriorityFeePerGas": [Function],
         "extend": [Function],
         "getBalance": [Function],
+        "getBlobBaseFee": [Function],
         "getBlock": [Function],
         "getBlockNumber": [Function],
         "getBlockTransactionCount": [Function],
         "getBytecode": [Function],
         "getChainId": [Function],
+        "getCode": [Function],
         "getContractEvents": [Function],
+        "getEip712Domain": [Function],
         "getEnsAddress": [Function],
         "getEnsAvatar": [Function],
         "getEnsName": [Function],
@@ -409,6 +417,7 @@ describe('transports', () => {
         "type": "publicClient",
         "uninstallFilter": [Function],
         "verifyMessage": [Function],
+        "verifySiweMessage": [Function],
         "verifyTypedData": [Function],
         "waitForTransactionReceipt": [Function],
         "watchBlockNumber": [Function],
@@ -436,6 +445,7 @@ test('extend', () => {
       "batch": undefined,
       "cacheTime": 4000,
       "call": [Function],
+      "ccipRead": undefined,
       "chain": {
         "fees": undefined,
         "formatters": undefined,
@@ -446,14 +456,8 @@ test('extend', () => {
           "name": "Ether",
           "symbol": "ETH",
         },
-        "network": "localhost",
         "rpcUrls": {
           "default": {
-            "http": [
-              "http://127.0.0.1:8545",
-            ],
-          },
-          "public": {
             "http": [
               "http://127.0.0.1:8545",
             ],
@@ -467,6 +471,7 @@ test('extend', () => {
       "createPendingTransactionFilter": [Function],
       "deployContract": [Function],
       "dropTransaction": [Function],
+      "dumpState": [Function],
       "estimateContractGas": [Function],
       "estimateFeesPerGas": [Function],
       "estimateGas": [Function],
@@ -475,12 +480,15 @@ test('extend', () => {
       "getAddresses": [Function],
       "getAutomine": [Function],
       "getBalance": [Function],
+      "getBlobBaseFee": [Function],
       "getBlock": [Function],
       "getBlockNumber": [Function],
       "getBlockTransactionCount": [Function],
       "getBytecode": [Function],
       "getChainId": [Function],
+      "getCode": [Function],
       "getContractEvents": [Function],
+      "getEip712Domain": [Function],
       "getEnsAddress": [Function],
       "getEnsAvatar": [Function],
       "getEnsName": [Function],
@@ -504,6 +512,7 @@ test('extend', () => {
       "increaseTime": [Function],
       "inspectTxpool": [Function],
       "key": "public",
+      "loadState": [Function],
       "mine": [Function],
       "multicall": [Function],
       "name": "Public Client",
@@ -549,11 +558,12 @@ test('extend', () => {
         "retryDelay": 150,
         "timeout": 10000,
         "type": "http",
-        "url": undefined,
+        "url": "http://127.0.0.1:8545",
       },
       "type": "publicClient",
       "uninstallFilter": [Function],
       "verifyMessage": [Function],
+      "verifySiweMessage": [Function],
       "verifyTypedData": [Function],
       "waitForTransactionReceipt": [Function],
       "watchAsset": [Function],

@@ -3,13 +3,8 @@ import type { AbiEvent } from 'abitype'
 import { describe, expect, test } from 'vitest'
 
 import { usdcContractConfig, wagmiContractConfig } from '~test/src/abis.js'
-import { accounts, address, forkBlockNumber } from '~test/src/constants.js'
-import {
-  publicClient,
-  testClient,
-  walletClient,
-  walletClientWithAccount,
-} from '~test/src/utils.js'
+import { accounts, address } from '~test/src/constants.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 
 import {
   getContract,
@@ -24,10 +19,15 @@ import {
   writeContract,
 } from './index.js'
 
+const publicClient = anvilMainnet.getClient()
+const walletClient = anvilMainnet.getClient()
+const walletClientWithAccount = anvilMainnet.getClient({
+  account: accounts[0].address,
+})
+
 const contract = getContract({
   ...wagmiContractConfig,
-  publicClient,
-  walletClient,
+  client: { public: publicClient, wallet: walletClient },
 })
 
 test('address', () => {
@@ -51,7 +51,7 @@ test('createEventFilter', async () => {
         from: accounts[0].address,
       },
       {
-        fromBlock: forkBlockNumber - 5n,
+        fromBlock: anvilMainnet.forkBlockNumber - 5n,
       },
     ),
   ).resolves.toBeDefined()
@@ -76,7 +76,7 @@ test('createEventFilter', async () => {
         type: 'event',
       },
     ],
-    publicClient,
+    client: { public: publicClient },
   })
   await expect(
     contractNoIndexedEventArgs.createEventFilter.Transfer([
@@ -97,14 +97,18 @@ describe('estimateGas', async () => {
   test('account inherited from wallet client', async () => {
     const contract1 = getContract({
       ...wagmiContractConfig,
-      publicClient,
-      walletClient: walletClientWithAccount,
+      client: {
+        public: publicClient,
+        wallet: walletClientWithAccount,
+      },
     })
     await expect(contract1.estimateGas.mint()).resolves.toBeDefined()
 
     const contract2 = getContract({
       ...wagmiContractConfig,
-      walletClient: walletClientWithAccount,
+      client: {
+        wallet: walletClientWithAccount,
+      },
     })
     await expect(contract2.estimateGas.mint()).resolves.toBeDefined()
   })
@@ -122,8 +126,10 @@ test('simulate', async () => {
     abi: wagmiContractConfig.abi.filter(
       (x) => (x as { name: string }).name === 'mint',
     ),
-    publicClient,
-    walletClient,
+    client: {
+      public: publicClient,
+      wallet: walletClient,
+    },
   })
   await expect(
     contract.simulate.mint({
@@ -154,7 +160,10 @@ test('simulate', async () => {
             "type": "function",
           },
         ],
-        "account": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "account": {
+          "address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "type": "json-rpc",
+        },
         "address": "0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2",
         "args": [],
         "dataSuffix": undefined,
@@ -166,10 +175,10 @@ test('simulate', async () => {
 })
 
 test('getEvents', async () => {
-  await impersonateAccount(testClient, {
+  await impersonateAccount(publicClient, {
     address: address.usdcHolder,
   })
-  await setBalance(testClient, {
+  await setBalance(publicClient, {
     address: address.usdcHolder,
     value: 10000000000000000000000n,
   })
@@ -186,17 +195,19 @@ test('getEvents', async () => {
     args: [accounts[1].address, 1n],
     account: address.usdcHolder,
   })
-  await mine(testClient, { blocks: 1 })
+  await mine(publicClient, { blocks: 1 })
 
   const contract = getContract({
     ...usdcContractConfig,
-    publicClient,
+    client: {
+      public: publicClient,
+    },
   })
   const logs = await contract.getEvents.Transfer()
 
   expect(logs.length).toBe(1)
 
-  await stopImpersonatingAccount(testClient, {
+  await stopImpersonatingAccount(publicClient, {
     address: address.usdcHolder,
   })
 })
@@ -238,32 +249,34 @@ test('js reserved keywords/prototype methods as abi item names', async () => {
         outputs: [{ type: 'address' }],
       },
     ],
-    publicClient,
+    client: {
+      public: publicClient,
+    },
   })
   await expect(
     contractNoIndexedEventArgs.read.constructor(),
   ).rejects.toThrowErrorMatchingInlineSnapshot(`
-    "The contract function \\"constructor\\" reverted.
+    [ContractFunctionExecutionError: The contract function "constructor" reverted.
 
     Contract Call:
       address:   0x0000000000000000000000000000000000000000
       function:  constructor()
 
-    Docs: https://viem.sh/docs/contract/readContract.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/readContract
+    Version: viem@x.y.z]
   `)
   await expect(
     contractNoIndexedEventArgs.read.function(['function']),
   ).rejects.toThrowErrorMatchingInlineSnapshot(`
-    "The contract function \\"function\\" reverted.
+    [ContractFunctionExecutionError: The contract function "function" reverted.
 
     Contract Call:
       address:   0x0000000000000000000000000000000000000000
       function:  function(string function)
       args:              (function)
 
-    Docs: https://viem.sh/docs/contract/readContract.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/readContract
+    Version: viem@x.y.z]
   `)
 })
 

@@ -1,25 +1,26 @@
 import type { ErrorType } from '../../errors/utils.js'
 import type { ByteArray, Hex } from '../../types/misc.js'
 
-export type ConcatReturnType<TValue extends Hex | ByteArray> =
-  TValue extends Hex ? Hex : ByteArray
+export type ConcatReturnType<value extends Hex | ByteArray> = value extends Hex
+  ? Hex
+  : ByteArray
 
 export type ConcatErrorType =
   | ConcatBytesErrorType
   | ConcatHexErrorType
   | ErrorType
 
-export function concat<TValue extends Hex | ByteArray>(
-  values: TValue[],
-): ConcatReturnType<TValue> {
+export function concat<value extends Hex | ByteArray>(
+  values: readonly value[],
+): ConcatReturnType<value> {
   if (typeof values[0] === 'string')
-    return concatHex(values as Hex[]) as ConcatReturnType<TValue>
-  return concatBytes(values as ByteArray[]) as ConcatReturnType<TValue>
+    return concatHex(values as readonly Hex[]) as ConcatReturnType<value>
+  return concatBytes(values as readonly ByteArray[]) as ConcatReturnType<value>
 }
 
 export type ConcatBytesErrorType = ErrorType
 
-export function concatBytes(values: ByteArray[]): ByteArray {
+export function concatBytes(values: readonly ByteArray[]): ByteArray {
   let length = 0
   for (const arr of values) {
     length += arr.length
@@ -35,7 +36,7 @@ export function concatBytes(values: ByteArray[]): ByteArray {
 
 export type ConcatHexErrorType = ErrorType
 
-export function concatHex(values: Hex[]): Hex {
+export function concatHex(values: readonly Hex[]): Hex {
   return `0x${(values as Hex[]).reduce(
     (acc, x) => acc + x.replace('0x', ''),
     '',

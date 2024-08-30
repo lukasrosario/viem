@@ -8,12 +8,13 @@ import type { Prettify } from '../../types/utils.js'
 import {
   type GetChainContractAddressErrorType,
   getChainContractAddress,
-} from '../../utils/chain.js'
+} from '../../utils/chain/getChainContractAddress.js'
 import { type ToHexErrorType, toHex } from '../../utils/encoding/toHex.js'
 import {
   type PacketToBytesErrorType,
   packetToBytes,
 } from '../../utils/ens/packetToBytes.js'
+import { getAction } from '../../utils/getAction.js'
 import {
   type ReadContractParameters,
   readContract,
@@ -24,7 +25,7 @@ export type GetEnsResolverParameters = Prettify<
     /** Name to get the address for. */
     name: string
     /** Address of ENS Universal Resolver Contract. */
-    universalResolverAddress?: Address
+    universalResolverAddress?: Address | undefined
   }
 >
 
@@ -39,12 +40,12 @@ export type GetEnsResolverErrorType =
 /**
  * Gets resolver for ENS name.
  *
- * - Docs: https://viem.sh/docs/ens/actions/getEnsResolver.html
- * - Examples: https://stackblitz.com/github/wagmi-dev/viem/tree/main/examples/ens
+ * - Docs: https://viem.sh/docs/ens/actions/getEnsResolver
+ * - Examples: https://stackblitz.com/github/wevm/viem/tree/main/examples/ens
  *
  * Calls `findResolver(bytes)` on ENS Universal Resolver Contract to retrieve the resolver of an ENS name.
  *
- * Since ENS names prohibit certain forbidden characters (e.g. underscore) and have other validation rules, you likely want to [normalize ENS names](https://docs.ens.domains/contract-api-reference/name-processing#normalising-names) with [UTS-46 normalization](https://unicode.org/reports/tr46) before passing them to `getEnsAddress`. You can use the built-in [`normalize`](https://viem.sh/docs/ens/utilities/normalize.html) function for this.
+ * Since ENS names prohibit certain forbidden characters (e.g. underscore) and have other validation rules, you likely want to [normalize ENS names](https://docs.ens.domains/contract-api-reference/name-processing#normalising-names) with [UTS-46 normalization](https://unicode.org/reports/tr46) before passing them to `getEnsAddress`. You can use the built-in [`normalize`](https://viem.sh/docs/ens/utilities/normalize) function for this.
  *
  * @param client - Client to use
  * @param parameters - {@link GetEnsResolverParameters}
@@ -60,12 +61,12 @@ export type GetEnsResolverErrorType =
  *   transport: http(),
  * })
  * const resolverAddress = await getEnsResolver(client, {
- *   name: normalize('wagmi-dev.eth'),
+ *   name: normalize('wevm.eth'),
  * })
  * // '0x4976fb03C32e5B8cfe2b6cCB31c09Ba78EBaBa41'
  */
-export async function getEnsResolver<TChain extends Chain | undefined>(
-  client: Client<Transport, TChain>,
+export async function getEnsResolver<chain extends Chain | undefined>(
+  client: Client<Transport, chain>,
   {
     blockNumber,
     blockTag,
@@ -87,7 +88,11 @@ export async function getEnsResolver<TChain extends Chain | undefined>(
     })
   }
 
-  const [resolverAddress] = await readContract(client, {
+  const [resolverAddress] = await getAction(
+    client,
+    readContract,
+    'readContract',
+  )({
     address: universalResolverAddress,
     abi: [
       {

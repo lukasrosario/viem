@@ -1,17 +1,19 @@
 import { expect, test } from 'vitest'
 
 import { accounts, address } from '~test/src/constants.js'
-import { publicClient, testClient } from '~test/src/utils.js'
 import { celo } from '../../chains/index.js'
 import { createTestClient } from '../../clients/createTestClient.js'
-import { defineChain } from '../../utils/chain.js'
+import { defineChain } from '../../utils/chain/defineChain.js'
 import { parseEther } from '../../utils/unit/parseEther.js'
 import { getBalance } from '../public/getBalance.js'
 
+import { anvilMainnet } from '../../../test/src/anvil.js'
 import { http } from '../../index.js'
 import { mine } from './mine.js'
 import { sendUnsignedTransaction } from './sendUnsignedTransaction.js'
 import { setBalance } from './setBalance.js'
+
+const client = anvilMainnet.getClient()
 
 const sourceAccount = {
   address: address.vitalik,
@@ -19,21 +21,21 @@ const sourceAccount = {
 const targetAccount = accounts[9]
 
 test('sends unsigned transaction', async () => {
-  await setBalance(testClient, {
+  await setBalance(client, {
     address: targetAccount.address,
     value: targetAccount.balance,
   })
-  await setBalance(testClient, {
+  await setBalance(client, {
     address: sourceAccount.address,
     value: parseEther('10000'),
   })
 
-  const balance = await getBalance(publicClient, {
+  const balance = await getBalance(client, {
     address: sourceAccount.address,
   })
 
   expect(
-    await sendUnsignedTransaction(testClient, {
+    await sendUnsignedTransaction(client, {
       from: sourceAccount.address,
       to: targetAccount.address,
       value: parseEther('1'),
@@ -41,27 +43,29 @@ test('sends unsigned transaction', async () => {
   ).toBeDefined()
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
 
-  await mine(testClient, { blocks: 1 })
+  await mine(client, { blocks: 1 })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10001000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toBeLessThan(balance)
 })
 
 test('sends unsigned transaction (w/ formatter)', async () => {
-  const chain = defineChain(testClient.chain, {
+  const chain = defineChain({
+    ...client.chain,
     formatters: {
-      transactionRequest: celo.formatters!.transactionRequest,
+      transactionRequest: celo.formatters.transactionRequest,
     },
+    serializers: undefined,
   })
   const testClient2 = createTestClient({
     chain,
@@ -78,7 +82,7 @@ test('sends unsigned transaction (w/ formatter)', async () => {
     value: parseEther('10000'),
   })
 
-  const balance = await getBalance(publicClient, {
+  const balance = await getBalance(client, {
     address: sourceAccount.address,
   })
 
@@ -91,18 +95,18 @@ test('sends unsigned transaction (w/ formatter)', async () => {
   ).toBeDefined()
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toMatchInlineSnapshot('10000000000000000000000n')
 
   await mine(testClient2, { blocks: 1 })
 
   expect(
-    await getBalance(publicClient, { address: targetAccount.address }),
+    await getBalance(client, { address: targetAccount.address }),
   ).toMatchInlineSnapshot('10001000000000000000000n')
   expect(
-    await getBalance(publicClient, { address: sourceAccount.address }),
+    await getBalance(client, { address: sourceAccount.address }),
   ).toBeLessThan(balance)
 })

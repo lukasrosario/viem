@@ -1,58 +1,65 @@
-import type { HDKey } from '@scure/bip32'
-
 import type { Address, TypedData } from 'abitype'
 
+import type { HDKey } from '../types/account.js'
 import type { Hash, Hex, SignableMessage } from '../types/misc.js'
 import type {
   TransactionSerializable,
   TransactionSerialized,
 } from '../types/transaction.js'
 import type { TypedDataDefinition } from '../types/typedData.js'
-import type { IsNarrowable } from '../types/utils.js'
+import type { IsNarrowable, OneOf } from '../types/utils.js'
+import type { NonceManager } from '../utils/nonceManager.js'
 import type { GetTransactionType } from '../utils/transaction/getTransactionType.js'
 import type { SerializeTransactionFn } from '../utils/transaction/serializeTransaction.js'
 
-export type Account<TAddress extends Address = Address> =
-  | JsonRpcAccount<TAddress>
-  | LocalAccount<string, TAddress>
+export type Account<address extends Address = Address> = OneOf<
+  JsonRpcAccount<address> | LocalAccount<string, address>
+>
 
 export type AccountSource = Address | CustomSource
 export type CustomSource = {
   address: Address
+  nonceManager?: NonceManager | undefined
   signMessage: ({ message }: { message: SignableMessage }) => Promise<Hash>
-  signTransaction: <TTransactionSerializable extends TransactionSerializable>(
-    transaction: TTransactionSerializable,
-    args?: {
-      serializer?: SerializeTransactionFn<TTransactionSerializable>
-    },
+  signTransaction: <
+    serializer extends
+      SerializeTransactionFn<TransactionSerializable> = SerializeTransactionFn<TransactionSerializable>,
+    transaction extends Parameters<serializer>[0] = Parameters<serializer>[0],
+  >(
+    transaction: transaction,
+    args?:
+      | {
+          serializer?: serializer | undefined
+        }
+      | undefined,
   ) => Promise<
     IsNarrowable<
-      TransactionSerialized<GetTransactionType<TTransactionSerializable>>,
+      TransactionSerialized<GetTransactionType<transaction>>,
       Hash
     > extends true
-      ? TransactionSerialized<GetTransactionType<TTransactionSerializable>>
+      ? TransactionSerialized<GetTransactionType<transaction>>
       : Hash
   >
   signTypedData: <
-    const TTypedData extends TypedData | { [key: string]: unknown },
-    TPrimaryType extends string = string,
+    const typedData extends TypedData | Record<string, unknown>,
+    primaryType extends keyof typedData | 'EIP712Domain' = keyof typedData,
   >(
-    typedData: TypedDataDefinition<TTypedData, TPrimaryType>,
+    typedDataDefinition: TypedDataDefinition<typedData, primaryType>,
   ) => Promise<Hash>
 }
 
-export type JsonRpcAccount<TAddress extends Address = Address> = {
-  address: TAddress
+export type JsonRpcAccount<address extends Address = Address> = {
+  address: address
   type: 'json-rpc'
 }
 
 export type LocalAccount<
-  TSource extends string = 'custom',
-  TAddress extends Address = Address,
+  source extends string = string,
+  address extends Address = Address,
 > = CustomSource & {
-  address: TAddress
+  address: address
   publicKey: Hex
-  source: TSource
+  source: source
   type: 'local'
 }
 
@@ -63,17 +70,17 @@ export type HDAccount = LocalAccount<'hd'> & {
 export type HDOptions =
   | {
       /** The account index to use in the path (`"m/44'/60'/${accountIndex}'/0/0"`). */
-      accountIndex?: number
+      accountIndex?: number | undefined
       /** The address index to use in the path (`"m/44'/60'/0'/0/${addressIndex}"`). */
-      addressIndex?: number
+      addressIndex?: number | undefined
       /** The change index to use in the path (`"m/44'/60'/0'/${changeIndex}/0"`). */
-      changeIndex?: number
-      path?: never
+      changeIndex?: number | undefined
+      path?: undefined
     }
   | {
-      accountIndex?: never
-      addressIndex?: never
-      changeIndex?: never
+      accountIndex?: undefined
+      addressIndex?: undefined
+      changeIndex?: undefined
       /** The HD path. */
       path: `m/44'/60'/${string}`
     }

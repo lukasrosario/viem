@@ -1,7 +1,7 @@
 import { assertType, describe, expect, test } from 'vitest'
 
-import { getEventSelector } from '../../utils/hash/getEventSelector.js'
 import { getAddress } from '../address/getAddress.js'
+import { toEventSelector } from '../hash/toEventSelector.js'
 
 import { decodeEventLog } from './decodeEventLog.js'
 
@@ -77,6 +77,52 @@ test('named args: Transfer(address,address,uint256)', () => {
       to: '0xa5cc3c03994DB5b0d9A5eEdD10CabaB0813678AC',
       tokenId: 1n,
     },
+  })
+})
+
+test('named args with a missing name: Transfer(address,address,uint256)', () => {
+  const event = decodeEventLog({
+    abi: [
+      {
+        inputs: [
+          {
+            indexed: true,
+            name: 'from',
+            type: 'address',
+          },
+          {
+            indexed: true,
+            name: 'to',
+            type: 'address',
+          },
+          {
+            indexed: false,
+            name: '',
+            type: 'uint256',
+          },
+        ],
+        name: 'Transfer',
+        type: 'event',
+      },
+    ],
+    data: '0x0000000000000000000000000000000000000000000000000000000000000001',
+    topics: [
+      '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+      '0x000000000000000000000000a5cc3c03994db5b0d9a5eedd10cabab0813678ac',
+      '0x000000000000000000000000a5cc3c03994db5b0d9a5eedd10cabab0813678ac',
+    ],
+  })
+  assertType<typeof event>({
+    eventName: 'Transfer',
+    args: ['0x', '0x', 1n],
+  })
+  expect(event).toEqual({
+    args: [
+      '0xa5cc3c03994DB5b0d9A5eEdD10CabaB0813678AC',
+      '0xa5cc3c03994DB5b0d9A5eEdD10CabaB0813678AC',
+      1n,
+    ],
+    eventName: 'Transfer',
   })
 })
 
@@ -346,9 +392,9 @@ test('named: topics + event params mismatch', () => {
     }),
   ).toThrowErrorMatchingInlineSnapshot(
     `
-    "Expected a topic for indexed event parameter \\"id\\" on event \\"Transfer(address from, address to, uint256 id)\\".
+    [DecodeLogTopicsMismatch: Expected a topic for indexed event parameter "id" on event "Transfer(address from, address to, uint256 id)".
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `,
   )
 })
@@ -383,9 +429,9 @@ test('unnamed: topics + event params mismatch', () => {
     }),
   ).toThrowErrorMatchingInlineSnapshot(
     `
-    "Expected a topic for indexed event parameter on event \\"Transfer(address, address, uint256)\\".
+    [DecodeLogTopicsMismatch: Expected a topic for indexed event parameter on event "Transfer(address, address, uint256)".
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `,
   )
 })
@@ -428,13 +474,13 @@ test('data + event params mismatch', () => {
       ],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-        "Data size of 32 bytes is too small for non-indexed event parameters.
+    [DecodeLogDataMismatch: Data size of 32 bytes is too small for non-indexed event parameters.
 
-        Params: (address to, uint256 id)
-        Data:   0x0000000000000000000000000000000000000000000000000000000023c34600 (32 bytes)
+    Params: (address to, uint256 id)
+    Data:   0x0000000000000000000000000000000000000000000000000000000023c34600 (32 bytes)
 
-        Version: viem@1.0.2"
-      `)
+    Version: viem@x.y.z]
+  `)
 
   expect(() =>
     decodeEventLog({
@@ -469,12 +515,12 @@ test('data + event params mismatch', () => {
     }),
   ).toThrowErrorMatchingInlineSnapshot(
     `
-    "Data size of 0 bytes is too small for non-indexed event parameters.
+    [DecodeLogDataMismatch: Data size of 0 bytes is too small for non-indexed event parameters.
 
     Params: (address to)
     Data:   0x (0 bytes)
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `,
   )
 
@@ -512,12 +558,12 @@ test('data + event params mismatch', () => {
     }),
   ).toThrowErrorMatchingInlineSnapshot(
     `
-    "Data size of 0 bytes is too small for non-indexed event parameters.
+    [DecodeLogDataMismatch: Data size of 0 bytes is too small for non-indexed event parameters.
 
     Params: (address to)
     Data:   0x (0 bytes)
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `,
   )
 })
@@ -615,7 +661,7 @@ test('strict', () => {
 })
 
 describe('GitHub repros', () => {
-  describe('https://github.com/wagmi-dev/viem/issues/168', () => {
+  describe('https://github.com/wevm/viem/issues/168', () => {
     test('zero data string', () => {
       const result = decodeEventLog({
         abi: [
@@ -677,7 +723,7 @@ describe('GitHub repros', () => {
     })
   })
 
-  describe('https://github.com/wagmi-dev/viem/issues/197', () => {
+  describe('https://github.com/wevm/viem/issues/197', () => {
     test('topics + event params mismatch', () => {
       expect(() =>
         decodeEventLog({
@@ -717,15 +763,15 @@ describe('GitHub repros', () => {
         }),
       ).toThrowErrorMatchingInlineSnapshot(
         `
-        "Expected a topic for indexed event parameter \\"id\\" on event \\"Transfer(address from, address to, uint256 id)\\".
+        [DecodeLogTopicsMismatch: Expected a topic for indexed event parameter "id" on event "Transfer(address from, address to, uint256 id)".
 
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `,
       )
     })
   })
 
-  describe('https://github.com/wagmi-dev/viem/issues/323', () => {
+  describe('https://github.com/wevm/viem/issues/323', () => {
     test('data + params mismatch', () => {
       expect(() =>
         decodeEventLog({
@@ -764,17 +810,17 @@ describe('GitHub repros', () => {
           ],
         }),
       ).toThrowErrorMatchingInlineSnapshot(`
-        "Data size of 32 bytes is too small for non-indexed event parameters.
+        [DecodeLogDataMismatch: Data size of 32 bytes is too small for non-indexed event parameters.
 
         Params: (address to, uint256 id)
         Data:   0x0000000000000000000000000000000000000000000000000000000023c34600 (32 bytes)
 
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
   })
 
-  describe('https://github.com/wagmi-dev/viem/issues/1336', () => {
+  describe('https://github.com/wevm/viem/issues/1336', () => {
     test('topics + event params mismatch', () => {
       expect(() =>
         decodeEventLog({
@@ -812,9 +858,9 @@ describe('GitHub repros', () => {
         }),
       ).toThrowErrorMatchingInlineSnapshot(
         `
-        "Expected a topic for indexed event parameter \\"nounId\\" on event \\"AuctionCreated(uint256 nounId, uint256 startTime, uint256 endTime)\\".
+        [DecodeLogTopicsMismatch: Expected a topic for indexed event parameter "nounId" on event "AuctionCreated(uint256 nounId, uint256 startTime, uint256 endTime)".
 
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `,
       )
     })
@@ -843,12 +889,12 @@ test("errors: event doesn't exist", () => {
       ],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Encoded event signature \\"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef\\" not found on ABI.
+    [AbiEventSignatureNotFoundError: Encoded event signature "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" not found on ABI.
     Make sure you are using the correct ABI and that the event exists on it.
     You can look up the signature here: https://openchain.xyz/signatures?query=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
 
-    Docs: https://viem.sh/docs/contract/decodeEventLog.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/decodeEventLog
+    Version: viem@x.y.z]
   `)
 })
 
@@ -871,10 +917,10 @@ test('errors: no topics', () => {
       topics: [],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Cannot extract event signature from empty topics.
+    [AbiEventSignatureEmptyTopicsError: Cannot extract event signature from empty topics.
 
-    Docs: https://viem.sh/docs/contract/decodeEventLog.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/decodeEventLog
+    Version: viem@x.y.z]
   `)
 })
 
@@ -913,12 +959,12 @@ test('errors: invalid data size', () => {
       ],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Data size of 1 bytes is too small for non-indexed event parameters.
+    [DecodeLogDataMismatch: Data size of 1 bytes is too small for non-indexed event parameters.
 
     Params: (uint256 tokenId)
     Data:   0x1 (1 bytes)
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `)
 })
 
@@ -951,14 +997,14 @@ test('errors: invalid bool', () => {
       data: '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
       eventName: 'Transfer',
       topics: [
-        getEventSelector('Transfer(address,address,bool)'),
+        toEventSelector('Transfer(address,address,bool)'),
         '0x000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045',
         '0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266',
       ],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Hex value \\"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef\\" is not a valid boolean. The hex value must be \\"0x0\\" (false) or \\"0x1\\" (true).
+    [InvalidBytesBooleanError: Bytes value "221,242,82,173,27,226,200,155,105,194,176,104,252,55,141,170,149,43,167,241,99,196,161,22,40,245,90,77,245,35,179,239" is not a valid boolean. The bytes array must contain a single byte of either a 0 or 1 value.
 
-    Version: viem@1.0.2"
+    Version: viem@x.y.z]
   `)
 })

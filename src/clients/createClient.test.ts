@@ -1,6 +1,6 @@
 import { assertType, describe, expect, test, vi } from 'vitest'
 
-import { localWsUrl } from '~test/src/constants.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 import { localhost, mainnet } from '../chains/index.js'
 import type { EIP1193RequestFn, EIP1474Methods } from '../types/eip1193.js'
 import { createClient } from './createClient.js'
@@ -30,6 +30,7 @@ test('creates', () => {
       "account": undefined,
       "batch": undefined,
       "cacheTime": 4000,
+      "ccipRead": undefined,
       "chain": undefined,
       "extend": [Function],
       "key": "base",
@@ -63,6 +64,7 @@ describe('transports', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -73,14 +75,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -102,7 +98,7 @@ describe('transports', () => {
           "retryDelay": 150,
           "timeout": 10000,
           "type": "http",
-          "url": undefined,
+          "url": "http://127.0.0.1:8545",
         },
         "type": "base",
       }
@@ -112,7 +108,7 @@ describe('transports', () => {
   test('webSocket', () => {
     const { uid, ...client } = createClient({
       chain: localhost,
-      transport: webSocket(localWsUrl),
+      transport: webSocket(anvilMainnet.rpcUrl.ws),
     })
 
     expect(uid).toBeDefined()
@@ -121,6 +117,7 @@ describe('transports', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -131,14 +128,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -152,6 +143,7 @@ describe('transports', () => {
         "pollingInterval": 4000,
         "request": [Function],
         "transport": {
+          "getRpcClient": [Function],
           "getSocket": [Function],
           "key": "webSocket",
           "name": "WebSocket JSON-RPC",
@@ -178,6 +170,7 @@ describe('transports', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "extend": [Function],
         "key": "base",
@@ -219,6 +212,53 @@ describe('config', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 10000,
+        "ccipRead": undefined,
+        "chain": undefined,
+        "extend": [Function],
+        "key": "base",
+        "name": "Base Client",
+        "pollingInterval": 4000,
+        "request": [Function],
+        "transport": {
+          "key": "mock",
+          "name": "Mock Transport",
+          "request": [MockFunction spy],
+          "retryCount": 3,
+          "retryDelay": 150,
+          "timeout": undefined,
+          "type": "mock",
+        },
+        "type": "base",
+      }
+    `)
+  })
+
+  test('ccipRead', () => {
+    const mockTransport = () =>
+      createTransport({
+        key: 'mock',
+        name: 'Mock Transport',
+        request: vi.fn(async () => null) as unknown as EIP1193RequestFn,
+        type: 'mock',
+      })
+    const { uid, ...client } = createClient({
+      ccipRead: {
+        async request(_parameters) {
+          return '0x' as const
+        },
+      },
+      transport: mockTransport,
+    })
+
+    expect(uid).toBeDefined()
+    expect(client).toMatchInlineSnapshot(`
+      {
+        "account": undefined,
+        "batch": undefined,
+        "cacheTime": 4000,
+        "ccipRead": {
+          "request": [Function],
+        },
         "chain": undefined,
         "extend": [Function],
         "key": "base",
@@ -259,6 +299,7 @@ describe('config', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "extend": [Function],
         "key": "bar",
@@ -299,6 +340,7 @@ describe('config', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "extend": [Function],
         "key": "base",
@@ -339,6 +381,7 @@ describe('config', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 10000,
+        "ccipRead": undefined,
         "chain": undefined,
         "extend": [Function],
         "key": "base",
@@ -379,6 +422,7 @@ describe('config', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": undefined,
         "extend": [Function],
         "key": "base",
@@ -401,15 +445,15 @@ describe('config', () => {
 })
 
 describe('extends', () => {
-  test('default', () => {
+  test('default', async () => {
     const client = createClient({
       chain: localhost,
       transport: http(),
     }).extend((config) => ({
-      getChainId: () => config.chain.id,
+      getChainId: async () => config.chain.id,
     }))
 
-    expect(client.getChainId()).toEqual(client.chain.id)
+    expect(await client.getChainId()).toEqual(client.chain.id)
   })
 
   test('public actions', () => {
@@ -424,6 +468,7 @@ describe('extends', () => {
         "batch": undefined,
         "cacheTime": 4000,
         "call": [Function],
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -434,14 +479,8 @@ describe('extends', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -459,12 +498,15 @@ describe('extends', () => {
         "estimateMaxPriorityFeePerGas": [Function],
         "extend": [Function],
         "getBalance": [Function],
+        "getBlobBaseFee": [Function],
         "getBlock": [Function],
         "getBlockNumber": [Function],
         "getBlockTransactionCount": [Function],
         "getBytecode": [Function],
         "getChainId": [Function],
+        "getCode": [Function],
         "getContractEvents": [Function],
+        "getEip712Domain": [Function],
         "getEnsAddress": [Function],
         "getEnsAvatar": [Function],
         "getEnsName": [Function],
@@ -499,11 +541,12 @@ describe('extends', () => {
           "retryDelay": 150,
           "timeout": 10000,
           "type": "http",
-          "url": undefined,
+          "url": "http://127.0.0.1:8545",
         },
         "type": "base",
         "uninstallFilter": [Function],
         "verifyMessage": [Function],
+        "verifySiweMessage": [Function],
         "verifyTypedData": [Function],
         "waitForTransactionReceipt": [Function],
         "watchBlockNumber": [Function],
@@ -515,7 +558,7 @@ describe('extends', () => {
     `)
   })
 
-  test('ignores protected properties', () => {
+  describe('ignores protected properties', () => {
     test('default', () => {
       const client = createClient({
         chain: localhost,

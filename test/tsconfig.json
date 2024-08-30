@@ -1,6 +1,10 @@
 {
+  "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["bun-types"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ESNext",
+    "types": ["@types/bun"],
     "baseUrl": ".",
     "paths": {
       "~viem/*": ["../src/*"]

@@ -12,13 +12,14 @@ import type {
   Chain,
   ChainEstimateFeesPerGasFnParameters,
   ChainFeesFnParameters,
+  GetChainParameter,
 } from '../../types/chain.js'
-import type { GetChain } from '../../types/chain.js'
 import type {
   FeeValuesEIP1559,
   FeeValuesLegacy,
   FeeValuesType,
 } from '../../types/fee.js'
+import { getAction } from '../../utils/getAction.js'
 import type { PrepareTransactionRequestParameters } from '../wallet/prepareTransactionRequest.js'
 import {
   type EstimateMaxPriorityFeePerGasErrorType,
@@ -40,8 +41,8 @@ export type EstimateFeesPerGasParameters<
    *
    * @default 'eip1559'
    */
-  type?: type | FeeValuesType
-} & GetChain<chain, chainOverride>
+  type?: type | FeeValuesType | undefined
+} & GetChainParameter<chain, chainOverride>
 
 export type EstimateFeesPerGasReturnType<
   type extends FeeValuesType = FeeValuesType,
@@ -59,9 +60,9 @@ export type EstimateFeesPerGasErrorType =
 /**
  * Returns an estimate for the fees per gas (in wei) for a
  * transaction to be likely included in the next block.
- * Defaults to [`chain.fees.estimateFeesPerGas`](/docs/clients/chains.html#fees-estimatefeespergas) if set.
+ * Defaults to [`chain.fees.estimateFeesPerGas`](/docs/clients/chains#fees-estimatefeespergas) if set.
  *
- * - Docs: https://viem.sh/docs/actions/public/estimateFeesPerGas.html
+ * - Docs: https://viem.sh/docs/actions/public/estimateFeesPerGas
  *
  * @param client - Client to use
  * @param parameters - {@link EstimateFeesPerGasParameters}
@@ -85,7 +86,7 @@ export async function estimateFeesPerGas<
   type extends FeeValuesType = 'eip1559',
 >(
   client: Client<Transport, chain>,
-  args?: EstimateFeesPerGasParameters<chain, chainOverride, type>,
+  args?: EstimateFeesPerGasParameters<chain, chainOverride, type> | undefined,
 ): Promise<EstimateFeesPerGasReturnType<type>> {
   return internal_estimateFeesPerGas(client, args as any)
 }
@@ -97,8 +98,8 @@ export async function internal_estimateFeesPerGas<
 >(
   client: Client<Transport, chain>,
   args: EstimateFeesPerGasParameters<chain, chainOverride, type> & {
-    block?: Block
-    request?: PrepareTransactionRequestParameters
+    block?: Block | undefined
+    request?: PrepareTransactionRequestParameters | undefined
   },
 ): Promise<EstimateFeesPerGasReturnType<type>> {
   const {
@@ -125,31 +126,37 @@ export async function internal_estimateFeesPerGas<
     (base * BigInt(Math.ceil(baseFeeMultiplier * denominator))) /
     BigInt(denominator)
 
-  const block = block_ ? block_ : await getBlock(client)
+  const block = block_
+    ? block_
+    : await getAction(client, getBlock, 'getBlock')({})
 
-  if (typeof chain?.fees?.estimateFeesPerGas === 'function')
-    return chain.fees.estimateFeesPerGas({
+  if (typeof chain?.fees?.estimateFeesPerGas === 'function') {
+    const fees = (await chain.fees.estimateFeesPerGas({
       block: block_ as Block,
       client,
       multiply,
       request,
       type,
-    } as ChainEstimateFeesPerGasFnParameters) as unknown as EstimateFeesPerGasReturnType<type>
+    } as ChainEstimateFeesPerGasFnParameters)) as unknown as EstimateFeesPerGasReturnType<type>
+
+    if (fees !== null) return fees
+  }
 
   if (type === 'eip1559') {
     if (typeof block.baseFeePerGas !== 'bigint')
       throw new Eip1559FeesNotSupportedError()
 
-    const maxPriorityFeePerGas = request?.maxPriorityFeePerGas
-      ? request.maxPriorityFeePerGas
-      : await internal_estimateMaxPriorityFeePerGas(
-          client as Client<Transport, Chain>,
-          {
-            block,
-            chain,
-            request,
-          },
-        )
+    const maxPriorityFeePerGas =
+      typeof request?.maxPriorityFeePerGas === 'bigint'
+        ? request.maxPriorityFeePerGas
+        : await internal_estimateMaxPriorityFeePerGas(
+            client as Client<Transport, Chain>,
+            {
+              block: block as Block,
+              chain,
+              request,
+            },
+          )
 
     const baseFeePerGas = multiply(block.baseFeePerGas)
     const maxFeePerGas =
@@ -161,7 +168,9 @@ export async function internal_estimateFeesPerGas<
     } as EstimateFeesPerGasReturnType<type>
   }
 
-  const gasPrice = request?.gasPrice ?? multiply(await getGasPrice(client))
+  const gasPrice =
+    request?.gasPrice ??
+    multiply(await getAction(client, getGasPrice, 'getGasPrice')({}))
   return {
     gasPrice,
   } as EstimateFeesPerGasReturnType<type>

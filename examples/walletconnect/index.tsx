@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import {
   http,
-  Address,
-  Hash,
-  TransactionReceipt,
+  type Address,
+  type Hash,
+  type TransactionReceipt,
   createPublicClient,
   createWalletClient,
   custom,
@@ -53,7 +53,6 @@ function Example() {
       to: addressInput.current!.value as Address,
       value: parseEther(valueInput.current!.value as `${number}`),
     })
-    console.log('test', hash)
     setHash(hash)
   }
 

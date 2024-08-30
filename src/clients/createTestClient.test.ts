@@ -1,8 +1,9 @@
 import { assertType, describe, expect, test, vi } from 'vitest'
 
-import { accounts, localWsUrl } from '~test/src/constants.js'
+import { accounts } from '~test/src/constants.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 import { localhost } from '../chains/index.js'
-import { type EIP1193RequestFn, type TestRpcSchema } from '../index.js'
+import type { EIP1193RequestFn, TestRpcSchema } from '../index.js'
 import { createTestClient } from './createTestClient.js'
 import { publicActions } from './decorators/public.js'
 import { walletActions } from './decorators/wallet.js'
@@ -32,6 +33,7 @@ test('creates', () => {
       "account": undefined,
       "batch": undefined,
       "cacheTime": 4000,
+      "ccipRead": undefined,
       "chain": {
         "fees": undefined,
         "formatters": undefined,
@@ -42,14 +44,8 @@ test('creates', () => {
           "name": "Ether",
           "symbol": "ETH",
         },
-        "network": "localhost",
         "rpcUrls": {
           "default": {
-            "http": [
-              "http://127.0.0.1:8545",
-            ],
-          },
-          "public": {
             "http": [
               "http://127.0.0.1:8545",
             ],
@@ -58,6 +54,7 @@ test('creates', () => {
         "serializers": undefined,
       },
       "dropTransaction": [Function],
+      "dumpState": [Function],
       "extend": [Function],
       "getAutomine": [Function],
       "getTxpoolContent": [Function],
@@ -66,6 +63,7 @@ test('creates', () => {
       "increaseTime": [Function],
       "inspectTxpool": [Function],
       "key": "test",
+      "loadState": [Function],
       "mine": [Function],
       "mode": "anvil",
       "name": "Test Client",
@@ -119,6 +117,7 @@ describe('transports', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -129,14 +128,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -145,6 +138,7 @@ describe('transports', () => {
           "serializers": undefined,
         },
         "dropTransaction": [Function],
+        "dumpState": [Function],
         "extend": [Function],
         "getAutomine": [Function],
         "getTxpoolContent": [Function],
@@ -153,6 +147,7 @@ describe('transports', () => {
         "increaseTime": [Function],
         "inspectTxpool": [Function],
         "key": "test",
+        "loadState": [Function],
         "mine": [Function],
         "mode": "anvil",
         "name": "Test Client",
@@ -187,7 +182,7 @@ describe('transports', () => {
           "retryDelay": 150,
           "timeout": 10000,
           "type": "http",
-          "url": undefined,
+          "url": "http://127.0.0.1:8545",
         },
         "type": "testClient",
       }
@@ -198,7 +193,7 @@ describe('transports', () => {
     const { uid, ...client } = createTestClient({
       chain: localhost,
       mode: 'anvil',
-      transport: webSocket(localWsUrl),
+      transport: webSocket(anvilMainnet.rpcUrl.ws),
     })
 
     expect(uid).toBeDefined()
@@ -207,6 +202,7 @@ describe('transports', () => {
         "account": undefined,
         "batch": undefined,
         "cacheTime": 4000,
+        "ccipRead": undefined,
         "chain": {
           "fees": undefined,
           "formatters": undefined,
@@ -217,14 +213,8 @@ describe('transports', () => {
             "name": "Ether",
             "symbol": "ETH",
           },
-          "network": "localhost",
           "rpcUrls": {
             "default": {
-              "http": [
-                "http://127.0.0.1:8545",
-              ],
-            },
-            "public": {
               "http": [
                 "http://127.0.0.1:8545",
               ],
@@ -233,6 +223,7 @@ describe('transports', () => {
           "serializers": undefined,
         },
         "dropTransaction": [Function],
+        "dumpState": [Function],
         "extend": [Function],
         "getAutomine": [Function],
         "getTxpoolContent": [Function],
@@ -241,6 +232,7 @@ describe('transports', () => {
         "increaseTime": [Function],
         "inspectTxpool": [Function],
         "key": "test",
+        "loadState": [Function],
         "mine": [Function],
         "mode": "anvil",
         "name": "Test Client",
@@ -267,6 +259,7 @@ describe('transports', () => {
         "snapshot": [Function],
         "stopImpersonatingAccount": [Function],
         "transport": {
+          "getRpcClient": [Function],
           "getSocket": [Function],
           "key": "webSocket",
           "name": "WebSocket JSON-RPC",
@@ -303,6 +296,7 @@ test('extend', () => {
       "batch": undefined,
       "cacheTime": 4000,
       "call": [Function],
+      "ccipRead": undefined,
       "chain": {
         "fees": undefined,
         "formatters": undefined,
@@ -313,14 +307,8 @@ test('extend', () => {
           "name": "Ether",
           "symbol": "ETH",
         },
-        "network": "localhost",
         "rpcUrls": {
           "default": {
-            "http": [
-              "http://127.0.0.1:8545",
-            ],
-          },
-          "public": {
             "http": [
               "http://127.0.0.1:8545",
             ],
@@ -334,6 +322,7 @@ test('extend', () => {
       "createPendingTransactionFilter": [Function],
       "deployContract": [Function],
       "dropTransaction": [Function],
+      "dumpState": [Function],
       "estimateContractGas": [Function],
       "estimateFeesPerGas": [Function],
       "estimateGas": [Function],
@@ -342,12 +331,15 @@ test('extend', () => {
       "getAddresses": [Function],
       "getAutomine": [Function],
       "getBalance": [Function],
+      "getBlobBaseFee": [Function],
       "getBlock": [Function],
       "getBlockNumber": [Function],
       "getBlockTransactionCount": [Function],
       "getBytecode": [Function],
       "getChainId": [Function],
+      "getCode": [Function],
       "getContractEvents": [Function],
+      "getEip712Domain": [Function],
       "getEnsAddress": [Function],
       "getEnsAvatar": [Function],
       "getEnsName": [Function],
@@ -371,6 +363,7 @@ test('extend', () => {
       "increaseTime": [Function],
       "inspectTxpool": [Function],
       "key": "test",
+      "loadState": [Function],
       "mine": [Function],
       "mode": "anvil",
       "multicall": [Function],
@@ -417,11 +410,12 @@ test('extend', () => {
         "retryDelay": 150,
         "timeout": 10000,
         "type": "http",
-        "url": undefined,
+        "url": "http://127.0.0.1:8545",
       },
       "type": "testClient",
       "uninstallFilter": [Function],
       "verifyMessage": [Function],
+      "verifySiweMessage": [Function],
       "verifyTypedData": [Function],
       "waitForTransactionReceipt": [Function],
       "watchAsset": [Function],

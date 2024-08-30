@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 
+import { erc20Abi } from 'abitype/abis'
 import { encodeFunctionData } from './encodeFunctionData.js'
+import { prepareEncodeFunctionData } from './prepareEncodeFunctionData.js'
 
 test('foo()', () => {
   expect(
@@ -131,6 +133,34 @@ test('inferred functionName', () => {
   )
 })
 
+test('selector as functionName', () => {
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: '0xa9059cbb',
+    args: ['0x0000000000000000000000000000000000000000', 69420n],
+  })
+  expect(data).toMatchInlineSnapshot(
+    `"0xa9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010f2c"`,
+  )
+})
+
+test('prepared', () => {
+  const transfer = prepareEncodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'transfer',
+  })
+  const data_prepared = encodeFunctionData({
+    ...transfer,
+    args: ['0x0000000000000000000000000000000000000000', 69420n],
+  })
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'transfer',
+    args: ['0x0000000000000000000000000000000000000000', 69420n],
+  })
+  expect(data_prepared).toEqual(data)
+})
+
 test("errors: function doesn't exist", () => {
   expect(() =>
     encodeFunctionData({
@@ -147,17 +177,17 @@ test("errors: function doesn't exist", () => {
       functionName: 'bar',
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Function \\"bar\\" not found on ABI.
+    [AbiFunctionNotFoundError: Function "bar" not found on ABI.
     Make sure you are using the correct ABI and that the function exists on it.
 
-    Docs: https://viem.sh/docs/contract/encodeFunctionData.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/encodeFunctionData
+    Version: viem@x.y.z]
   `)
 })
 
 test('errors: abi item not a function', () => {
   expect(() =>
-    // @ts-expect-error
+    // @ts-expect-error abi has no functions
     encodeFunctionData({
       abi: [
         {
@@ -169,10 +199,10 @@ test('errors: abi item not a function', () => {
       ],
     }),
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Function not found on ABI.
+    [AbiFunctionNotFoundError: Function not found on ABI.
     Make sure you are using the correct ABI and that the function exists on it.
 
-    Docs: https://viem.sh/docs/contract/encodeFunctionData.html
-    Version: viem@1.0.2"
+    Docs: https://viem.sh/docs/contract/encodeFunctionData
+    Version: viem@x.y.z]
   `)
 })

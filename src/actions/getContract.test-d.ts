@@ -3,17 +3,17 @@ import {
   type Address,
   type ExtractAbiEventNames,
   type ExtractAbiFunctionNames,
-  type ResolvedConfig,
+  type ResolvedRegister,
   parseAbi,
 } from 'abitype'
 
 import { expectTypeOf, test } from 'vitest'
 
 import { wagmiContractConfig } from '~test/src/abis.js'
-import { localHttpUrl } from '~test/src/constants.js'
-import { anvilChain, publicClient } from '~test/src/utils.js'
+import { anvilMainnet } from '../../test/src/anvil.js'
 import type { Account } from '../accounts/types.js'
 import { celo } from '../chains/index.js'
+
 import { createPublicClient } from '../clients/createPublicClient.js'
 import { createWalletClient } from '../clients/createWalletClient.js'
 import { http } from '../clients/transports/http.js'
@@ -21,25 +21,44 @@ import type { Chain } from '../types/chain.js'
 
 import { getContract } from './getContract.js'
 
+const publicClient = anvilMainnet.getClient()
 const walletClient = createWalletClient({
   account: '0x',
-  chain: anvilChain,
-  transport: http(localHttpUrl),
+  chain: anvilMainnet.chain,
+  transport: http(anvilMainnet.rpcUrl.http),
 })
 const walletClientWithoutAccount = createWalletClient({
-  chain: anvilChain,
-  transport: http(localHttpUrl),
+  chain: anvilMainnet.chain,
+  transport: http(anvilMainnet.rpcUrl.http),
 })
 const walletClientWithoutChain = createWalletClient({
   account: '0x',
-  transport: http(localHttpUrl),
+  transport: http(anvilMainnet.rpcUrl.http),
+})
+
+test('generic client', () => {
+  const contract = getContract({
+    ...wagmiContractConfig,
+    client: walletClient,
+  })
+
+  expectTypeOf<keyof typeof contract>().toEqualTypeOf<
+    | 'address'
+    | 'createEventFilter'
+    | 'estimateGas'
+    | 'watchEvent'
+    | 'read'
+    | 'simulate'
+    | 'getEvents'
+    | 'write'
+    | 'abi'
+  >()
 })
 
 test('public and wallet client', () => {
   const contract = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
 
   expectTypeOf<keyof typeof contract>().toEqualTypeOf<
@@ -58,7 +77,7 @@ test('public and wallet client', () => {
 test('no wallet client', () => {
   const contract = getContract({
     ...wagmiContractConfig,
-    publicClient,
+    client: { public: publicClient },
   })
 
   expectTypeOf<keyof typeof contract>().toEqualTypeOf<
@@ -76,7 +95,7 @@ test('no wallet client', () => {
 test('no public client', () => {
   const contract = getContract({
     ...wagmiContractConfig,
-    walletClient,
+    client: { wallet: walletClient },
   })
 
   expectTypeOf<keyof typeof contract>().toEqualTypeOf<
@@ -97,8 +116,7 @@ test('without const assertion on `abi`', () => {
   const contract = getContract({
     ...wagmiContractConfig,
     abi,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
 
   expectTypeOf(contract).toMatchTypeOf<{
@@ -128,8 +146,7 @@ test('`abi` declared as `Abi` type', () => {
   const contract = getContract({
     ...wagmiContractConfig,
     abi,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
 
   contract.createEventFilter.Transfer({ from: '0x' })
@@ -197,8 +214,7 @@ test('`abi` defined inline', () => {
         type: 'function',
       },
     ],
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   type Abi_ = [
     {
@@ -270,22 +286,21 @@ test('`abi` defined inline', () => {
 test('overloaded function', () => {
   const contract = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   expectTypeOf(contract.write.safeTransferFrom)
     .parameter(0)
     .toEqualTypeOf<
       | readonly [
-          ResolvedConfig['AddressType'],
-          ResolvedConfig['AddressType'],
-          ResolvedConfig['BigIntType'],
+          ResolvedRegister['AddressType'],
+          ResolvedRegister['AddressType'],
+          ResolvedRegister['BigIntType'],
         ]
       | readonly [
-          ResolvedConfig['AddressType'],
-          ResolvedConfig['AddressType'],
-          ResolvedConfig['BigIntType'],
-          ResolvedConfig['AddressType'],
+          ResolvedRegister['AddressType'],
+          ResolvedRegister['AddressType'],
+          ResolvedRegister['BigIntType'],
+          ResolvedRegister['AddressType'],
         ]
     >()
   expectTypeOf(contract.write.safeTransferFrom).toBeCallableWith([
@@ -304,18 +319,16 @@ test('overloaded function', () => {
 test('with and without wallet client `account`', () => {
   const contractWithAccount = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   const contractWithoutAccount = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient: walletClientWithoutAccount,
+    client: { public: publicClient, wallet: walletClientWithoutAccount },
   })
 
   expectTypeOf(contractWithAccount.write.approve)
     .parameter(1)
-    .extract<{ account?: Account | Address }>()
+    .extract<{ account?: Account | Address | undefined }>()
     // @ts-expect-error
     .toBeNever()
   expectTypeOf(contractWithoutAccount.write.approve)
@@ -328,18 +341,16 @@ test('with and without wallet client `account`', () => {
 test('with and without wallet client `chain`', () => {
   const contractWithChain = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   const contractWithoutChain = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient: walletClientWithoutChain,
+    client: { public: publicClient, wallet: walletClientWithoutChain },
   })
 
   expectTypeOf(contractWithChain.write.approve)
     .parameter(1)
-    .extract<{ chain?: Chain | null }>()
+    .extract<{ chain?: Chain | null | undefined }>()
     // @ts-expect-error
     .toBeNever()
   expectTypeOf(contractWithoutChain.write.approve)
@@ -383,8 +394,7 @@ test('no read functions', () => {
         type: 'function',
       },
     ],
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   type Abi_ = [
     {
@@ -472,8 +482,7 @@ test('no write functions', () => {
         type: 'function',
       },
     ],
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   type Abi_ = [
     {
@@ -541,8 +550,7 @@ test('no events', () => {
         type: 'function',
       },
     ],
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   type Abi_ = [
     {
@@ -590,8 +598,7 @@ test('empty abi', () => {
   const contract = getContract({
     ...wagmiContractConfig,
     abi: [],
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   expectTypeOf<keyof typeof contract>().toEqualTypeOf<'address' | 'abi'>()
   expectTypeOf(contract.abi).toEqualTypeOf<readonly []>()
@@ -635,8 +642,7 @@ test('argument permutations', async () => {
   const contract = getContract({
     ...wagmiContractConfig,
     abi,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
 
   // estimateGas
@@ -802,7 +808,7 @@ test('argument permutations', async () => {
 test('estimateGas', () => {
   const contract1 = getContract({
     ...wagmiContractConfig,
-    publicClient,
+    client: publicClient,
   })
   // `account` required
   contract1.estimateGas.mint({ account: '0x' })
@@ -810,7 +816,7 @@ test('estimateGas', () => {
 
   const contract2 = getContract({
     ...wagmiContractConfig,
-    walletClient,
+    client: walletClient,
   })
   // `account` inherited from `walletClient`
   contract2.estimateGas.mint()
@@ -818,7 +824,7 @@ test('estimateGas', () => {
 
   const contract3 = getContract({
     ...wagmiContractConfig,
-    walletClient: walletClientWithoutAccount,
+    client: walletClientWithoutAccount,
   })
   // `account` required
   contract3.estimateGas.mint({ account: '0x' })
@@ -826,12 +832,46 @@ test('estimateGas', () => {
 
   const contract4 = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   // `account` inherited from `walletClient`
   contract4.estimateGas.mint()
   contract4.estimateGas.approve(['0x', 123n])
+})
+
+test('simulate', async () => {
+  const contract1 = getContract({
+    ...wagmiContractConfig,
+    client: publicClient,
+  })
+  const result1 = await contract1.simulate.mint()
+  expectTypeOf<Pick<(typeof result1)['request'], 'account'>>().toEqualTypeOf<{
+    account?: undefined
+  }>()
+
+  const contract2 = getContract({
+    ...wagmiContractConfig,
+    client: walletClient,
+  })
+  const result2 = await contract2.simulate.mint()
+  expectTypeOf<Pick<(typeof result2)['request'], 'account'>>().toEqualTypeOf<{
+    account: {
+      address: '0x'
+      type: 'json-rpc'
+    }
+  }>()
+
+  const contract3 = getContract({
+    ...wagmiContractConfig,
+    client: publicClient,
+  })
+  const result3 = await contract3.simulate.mint({ account: '0x' })
+  expectTypeOf<Pick<(typeof result3)['request'], 'account'>>().toEqualTypeOf<{
+    account: {
+      address: '0x'
+      type: 'json-rpc'
+    }
+  }>()
 })
 
 test('chain w/ formatter', () => {
@@ -840,22 +880,22 @@ test('chain w/ formatter', () => {
     transport: http(),
   })
   const walletClient = createWalletClient({
+    account: '0x',
     chain: celo,
     transport: http(),
   })
 
   const contract = getContract({
     ...wagmiContractConfig,
-    publicClient,
-    walletClient,
+    client: { public: publicClient, wallet: walletClient },
   })
   const contract_public = getContract({
     ...wagmiContractConfig,
-    publicClient,
+    client: { public: publicClient },
   })
   const contract_wallet = getContract({
     ...wagmiContractConfig,
-    walletClient,
+    client: { wallet: walletClient },
   })
 
   expectTypeOf<keyof typeof contract>().toEqualTypeOf<
@@ -882,4 +922,8 @@ test('chain w/ formatter', () => {
   expectTypeOf<keyof typeof contract_wallet>().toEqualTypeOf<
     'estimateGas' | 'write' | 'address' | 'abi'
   >()
+
+  contract.estimateGas.mint([1n], {
+    feeCurrency: '0x',
+  })
 })

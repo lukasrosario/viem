@@ -1,5 +1,6 @@
 import type { Client } from '../../clients/createClient.js'
 import type { Transport } from '../../clients/transports/createTransport.js'
+import { BlockNotFoundError } from '../../errors/block.js'
 import {
   TransactionNotFoundError,
   TransactionReceiptNotFoundError,
@@ -9,8 +10,12 @@ import type { ErrorType } from '../../errors/utils.js'
 import type { Chain } from '../../types/chain.js'
 import type { Hash } from '../../types/misc.js'
 import type { Transaction } from '../../types/transaction.js'
+import { getAction } from '../../utils/getAction.js'
 import { type ObserveErrorType, observe } from '../../utils/observe.js'
-import { withRetry } from '../../utils/promise/withRetry.js'
+import {
+  type WithRetryParameters,
+  withRetry,
+} from '../../utils/promise/withRetry.js'
 import { stringify } from '../../utils/stringify.js'
 
 import { type GetBlockErrorType, getBlock } from './getBlock.js'
@@ -31,37 +36,47 @@ import {
 
 export type ReplacementReason = 'cancelled' | 'replaced' | 'repriced'
 export type ReplacementReturnType<
-  TChain extends Chain | undefined = Chain | undefined,
+  chain extends Chain | undefined = Chain | undefined,
 > = {
   reason: ReplacementReason
   replacedTransaction: Transaction
   transaction: Transaction
-  transactionReceipt: GetTransactionReceiptReturnType<TChain>
+  transactionReceipt: GetTransactionReceiptReturnType<chain>
 }
 
 export type WaitForTransactionReceiptReturnType<
-  TChain extends Chain | undefined = Chain | undefined,
-> = GetTransactionReceiptReturnType<TChain>
+  chain extends Chain | undefined = Chain | undefined,
+> = GetTransactionReceiptReturnType<chain>
 
 export type WaitForTransactionReceiptParameters<
-  TChain extends Chain | undefined = Chain | undefined,
+  chain extends Chain | undefined = Chain | undefined,
 > = {
   /**
    * The number of confirmations (blocks that have passed) to wait before resolving.
    * @default 1
    */
-  confirmations?: number
+  confirmations?: number | undefined
   /** The hash of the transaction. */
   hash: Hash
   /** Optional callback to emit if the transaction has been replaced. */
-  onReplaced?: (response: ReplacementReturnType<TChain>) => void
+  onReplaced?: ((response: ReplacementReturnType<chain>) => void) | undefined
   /**
    * Polling frequency (in ms). Defaults to the client's pollingInterval config.
    * @default client.pollingInterval
    */
-  pollingInterval?: number
+  pollingInterval?: number | undefined
+  /**
+   * Number of times to retry if the transaction or block is not found.
+   * @default 6 (exponential backoff)
+   */
+  retryCount?: WithRetryParameters['retryCount'] | undefined
+  /**
+   * Time to wait (in ms) between retries.
+   * @default `({ count }) => ~~(1 << count) * 200` (exponential backoff)
+   */
+  retryDelay?: WithRetryParameters['delay'] | undefined
   /** Optional timeout (in milliseconds) to wait before stopping polling. */
-  timeout?: number
+  timeout?: number | undefined
 }
 
 export type WaitForTransactionReceiptErrorType =
@@ -73,10 +88,10 @@ export type WaitForTransactionReceiptErrorType =
   | ErrorType
 
 /**
- * Waits for the [Transaction](https://viem.sh/docs/glossary/terms.html#transaction) to be included on a [Block](https://viem.sh/docs/glossary/terms.html#block) (one confirmation), and then returns the [Transaction Receipt](https://viem.sh/docs/glossary/terms.html#transaction-receipt). If the Transaction reverts, then the action will throw an error.
+ * Waits for the [Transaction](https://viem.sh/docs/glossary/terms#transaction) to be included on a [Block](https://viem.sh/docs/glossary/terms#block) (one confirmation), and then returns the [Transaction Receipt](https://viem.sh/docs/glossary/terms#transaction-receipt).
  *
- * - Docs: https://viem.sh/docs/actions/public/waitForTransactionReceipt.html
- * - Example: https://stackblitz.com/github/wagmi-dev/viem/tree/main/examples/transactions/sending-transactions
+ * - Docs: https://viem.sh/docs/actions/public/waitForTransactionReceipt
+ * - Example: https://stackblitz.com/github/wevm/viem/tree/main/examples/transactions/sending-transactions
  * - JSON-RPC Methods:
  *   - Polls [`eth_getTransactionReceipt`](https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_getTransactionReceipt) on each block until it has been processed.
  *   - If a Transaction has been replaced:
@@ -111,22 +126,25 @@ export type WaitForTransactionReceiptErrorType =
  * })
  */
 export async function waitForTransactionReceipt<
-  TChain extends Chain | undefined,
+  chain extends Chain | undefined,
 >(
-  client: Client<Transport, TChain>,
+  client: Client<Transport, chain>,
   {
     confirmations = 1,
     hash,
     onReplaced,
     pollingInterval = client.pollingInterval,
+    retryCount = 6,
+    retryDelay = ({ count }) => ~~(1 << count) * 200, // exponential backoff
     timeout,
-  }: WaitForTransactionReceiptParameters<TChain>,
-): Promise<WaitForTransactionReceiptReturnType<TChain>> {
+  }: WaitForTransactionReceiptParameters<chain>,
+): Promise<WaitForTransactionReceiptReturnType<chain>> {
   const observerId = stringify(['waitForTransactionReceipt', client.uid, hash])
 
-  let transaction: GetTransactionReturnType<TChain> | undefined
-  let replacedTransaction: GetTransactionReturnType<TChain> | undefined
-  let receipt: GetTransactionReceiptReturnType<TChain>
+  let count = 0
+  let transaction: GetTransactionReturnType<chain> | undefined
+  let replacedTransaction: GetTransactionReturnType<chain> | undefined
+  let receipt: GetTransactionReceiptReturnType<chain>
   let retrying = false
 
   return new Promise((resolve, reject) => {
@@ -140,21 +158,31 @@ export async function waitForTransactionReceipt<
       observerId,
       { onReplaced, resolve, reject },
       (emit) => {
-        const _unwatch = watchBlockNumber(client, {
+        const _unwatch = getAction(
+          client,
+          watchBlockNumber,
+          'watchBlockNumber',
+        )({
           emitMissed: true,
           emitOnBegin: true,
           poll: true,
           pollingInterval,
           async onBlockNumber(blockNumber_) {
-            if (retrying) return
-
-            let blockNumber = blockNumber_
-
             const done = (fn: () => void) => {
               _unwatch()
               fn()
               _unobserve()
             }
+
+            let blockNumber = blockNumber_
+
+            if (retrying) return
+            if (count > retryCount)
+              done(() =>
+                emit.reject(
+                  new WaitForTransactionReceiptTimeoutError({ hash }),
+                ),
+              )
 
             try {
               // If we already have a valid receipt, let's check if we have enough
@@ -178,21 +206,28 @@ export async function waitForTransactionReceipt<
                 retrying = true
                 await withRetry(
                   async () => {
-                    transaction = await getTransaction(client, { hash })
+                    transaction = (await getAction(
+                      client,
+                      getTransaction,
+                      'getTransaction',
+                    )({ hash })) as GetTransactionReturnType<chain>
                     if (transaction.blockNumber)
                       blockNumber = transaction.blockNumber
                   },
                   {
-                    // exponential backoff
-                    delay: ({ count }) => ~~(1 << count) * 200,
-                    retryCount: 6,
+                    delay: retryDelay,
+                    retryCount,
                   },
                 )
                 retrying = false
               }
 
               // Get the receipt to check if it's been processed.
-              receipt = await getTransactionReceipt(client, { hash })
+              receipt = await getAction(
+                client,
+                getTransactionReceipt,
+                'getTransactionReceipt',
+              )({ hash })
 
               // Check if we have enough confirmations. If not, continue polling.
               if (
@@ -207,21 +242,42 @@ export async function waitForTransactionReceipt<
               // If the receipt is not found, the transaction will be pending.
               // We need to check if it has potentially been replaced.
               if (
-                transaction &&
-                (err instanceof TransactionNotFoundError ||
-                  err instanceof TransactionReceiptNotFoundError)
+                err instanceof TransactionNotFoundError ||
+                err instanceof TransactionReceiptNotFoundError
               ) {
+                if (!transaction) {
+                  retrying = false
+                  return
+                }
+
                 try {
                   replacedTransaction = transaction
 
                   // Let's retrieve the transactions from the current block.
-                  const block = await getBlock(client, {
-                    blockNumber,
-                    includeTransactions: true,
-                  })
+                  // We need to retry as some RPC Providers may be slow to sync
+                  // up mined blocks.
+                  retrying = true
+                  const block = await withRetry(
+                    () =>
+                      getAction(
+                        client,
+                        getBlock,
+                        'getBlock',
+                      )({
+                        blockNumber,
+                        includeTransactions: true,
+                      }),
+                    {
+                      delay: retryDelay,
+                      retryCount,
+                      shouldRetry: ({ error }) =>
+                        error instanceof BlockNotFoundError,
+                    },
+                  )
+                  retrying = false
 
                   const replacementTransaction = (
-                    block.transactions as Transaction[]
+                    block.transactions as {} as Transaction[]
                   ).find(
                     ({ from, nonce }) =>
                       from === replacedTransaction!.from &&
@@ -232,7 +288,11 @@ export async function waitForTransactionReceipt<
                   if (!replacementTransaction) return
 
                   // If we found a replacement transaction, return it's receipt.
-                  receipt = await getTransactionReceipt(client, {
+                  receipt = await getAction(
+                    client,
+                    getTransactionReceipt,
+                    'getTransactionReceipt',
+                  )({
                     hash: replacementTransaction.hash,
                   })
 
@@ -260,7 +320,7 @@ export async function waitForTransactionReceipt<
                   done(() => {
                     emit.onReplaced?.({
                       reason,
-                      replacedTransaction: replacedTransaction!,
+                      replacedTransaction: replacedTransaction! as any,
                       transaction: replacementTransaction,
                       transactionReceipt: receipt,
                     })
@@ -272,6 +332,8 @@ export async function waitForTransactionReceipt<
               } else {
                 done(() => emit.reject(err))
               }
+            } finally {
+              count++
             }
           },
         })

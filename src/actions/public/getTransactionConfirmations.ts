@@ -4,6 +4,7 @@ import type { ErrorType } from '../../errors/utils.js'
 import type { Chain } from '../../types/chain.js'
 import type { Hash } from '../../types/misc.js'
 import type { FormattedTransactionReceipt } from '../../utils/formatters/transactionReceipt.js'
+import { getAction } from '../../utils/getAction.js'
 
 import {
   type GetBlockNumberErrorType,
@@ -15,17 +16,17 @@ import {
 } from './getTransaction.js'
 
 export type GetTransactionConfirmationsParameters<
-  TChain extends Chain | undefined = Chain,
+  chain extends Chain | undefined = Chain,
 > =
   | {
       /** The transaction hash. */
       hash: Hash
-      transactionReceipt?: never
+      transactionReceipt?: undefined
     }
   | {
-      hash?: never
+      hash?: undefined
       /** The transaction receipt. */
-      transactionReceipt: FormattedTransactionReceipt<TChain>
+      transactionReceipt: FormattedTransactionReceipt<chain>
     }
 
 export type GetTransactionConfirmationsReturnType = bigint
@@ -38,8 +39,8 @@ export type GetTransactionConfirmationsErrorType =
 /**
  * Returns the number of blocks passed (confirmations) since the transaction was processed on a block.
  *
- * - Docs: https://viem.sh/docs/actions/public/getTransactionConfirmations.html
- * - Example: https://stackblitz.com/github/wagmi-dev/viem/tree/main/examples/transactions/fetching-transactions
+ * - Docs: https://viem.sh/docs/actions/public/getTransactionConfirmations
+ * - Example: https://stackblitz.com/github/wevm/viem/tree/main/examples/transactions/fetching-transactions
  * - JSON-RPC Methods: [`eth_getTransactionConfirmations`](https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_getTransactionConfirmations)
  *
  * @param client - Client to use
@@ -60,14 +61,16 @@ export type GetTransactionConfirmationsErrorType =
  * })
  */
 export async function getTransactionConfirmations<
-  TChain extends Chain | undefined,
+  chain extends Chain | undefined,
 >(
-  client: Client<Transport, TChain>,
-  { hash, transactionReceipt }: GetTransactionConfirmationsParameters<TChain>,
+  client: Client<Transport, chain>,
+  { hash, transactionReceipt }: GetTransactionConfirmationsParameters<chain>,
 ): Promise<GetTransactionConfirmationsReturnType> {
   const [blockNumber, transaction] = await Promise.all([
-    getBlockNumber(client),
-    hash ? getTransaction(client, { hash }) : undefined,
+    getAction(client, getBlockNumber, 'getBlockNumber')({}),
+    hash
+      ? getAction(client, getTransaction, 'getTransaction')({ hash })
+      : undefined,
   ])
   const transactionBlockNumber =
     transactionReceipt?.blockNumber || transaction?.blockNumber

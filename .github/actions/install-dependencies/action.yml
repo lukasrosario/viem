@@ -4,12 +4,10 @@ description: "Prepare repository and all dependencies"
 runs:
   using: "composite"
   steps:
-    - name: Set up Bun
-      uses: oven-sh/setup-bun@v1
-
     - name: Set up foundry
       uses: foundry-rs/foundry-toolchain@v1
+      with:
+        version: nightly-72e44fb87c38b2acfa2b0b136fc1bc833f71e674
 
-    - name: Install dependencies
-      shell: bash
-      run: bun install --ignore-scripts
+    - name: Set up pnpm
+      uses: wevm/actions/.github/actions/pnpm@main

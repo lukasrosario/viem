@@ -1,11 +1,7 @@
-import { startProxy } from '@viem/anvil'
-
-import { forkBlockNumber, forkUrl } from './src/constants.js'
+import * as instances from './src/anvil.js'
 
 export default async function () {
-  if (process.env.SKIP_GLOBAL_SETUP) {
-    return
-  }
+  if (process.env.SKIP_GLOBAL_SETUP) return
 
   // Using this proxy, we can parallelize our test suite by spawning multiple "on demand" anvil
   // instances and proxying requests to them. Especially for local development, this is much faster
@@ -25,11 +21,8 @@ export default async function () {
   // We still need to remember to reset the anvil instance between test files. This is generally
   // handled in `setup.ts` but may require additional resetting (e.g. via `afterAll`), in case of
   // any custom per-test adjustments that persist beyond `anvil_reset`.
-  return await startProxy({
-    options: {
-      forkUrl,
-      forkBlockNumber,
-      noMining: true,
-    },
-  })
+  const shutdown = await Promise.all(
+    Object.values(instances).map((instance) => instance.start()),
+  )
+  return () => Promise.all(shutdown.map((fn) => fn()))
 }

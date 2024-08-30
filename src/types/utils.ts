@@ -1,3 +1,18 @@
+declare const symbol: unique symbol
+
+/**
+ * Creates a branded type of {@link T} with the brand {@link U}.
+ *
+ * @param T - Type to brand
+ * @param U - Label
+ * @returns Branded type
+ *
+ * @example
+ * type Result = Branded<string, 'foo'>
+ * //   ^? type Result = string & { [symbol]: 'foo' }
+ */
+export type Branded<T, U> = T & { [symbol]: U }
+
 /**
  * Filters out all members of {@link T} that are not {@link P}
  *
@@ -42,6 +57,26 @@ export type IsNarrowable<T, U> = IsNever<
  */
 export type IsNever<T> = [T] extends [never] ? true : false
 
+/** Removes `readonly` from all properties of an object. */
+export type Mutable<type extends object> = {
+  -readonly [key in keyof type]: type[key]
+}
+
+/**
+ * @description Returns type {@link T} if it is an opaque type of {@link U}
+ * @param T - Type to check
+ * @param U - Type to against
+ *
+ * @example
+ * type Result = Opaque<string, 'foo'>
+ * //   ^? never
+ *
+ * @example
+ * type Result = Opaque<string, string>
+ * //   ^? string
+ */
+export type Opaque<T, U> = IsNarrowable<T, U> extends true ? T : never
+
 /**
  * @description Evaluates boolean "or" condition for {@link T} properties.
  * @param T - Type to check
@@ -54,7 +89,7 @@ export type IsNever<T> = [T] extends [never] ? true : false
  * type Result = Or<[false, false, false]>
  * //   ^? type Result = false
  */
-export type Or<T extends readonly unknown[],> = T extends readonly [
+export type Or<T extends readonly unknown[]> = T extends readonly [
   infer Head,
   ...infer Tail,
 ]
@@ -72,28 +107,10 @@ export type Or<T extends readonly unknown[],> = T extends readonly [
  */
 export type IsUndefined<T> = [undefined] extends [T] ? true : false
 
-/**
- * Excludes empty attributes from T if TMaybeExclude is true.
- *
- * @example
- * type Result = MaybeExcludeEmpty<{ a: string, b: number, c: [] }, true>
- * //   ^? type Result = { a: string, b: number }
- * @example
- * type Result = MaybeExcludeEmpty<{ a: string, b: number, c: [] }, false>
- * //   ^? type Result = { a: string, b: number, c: [] }
- * @example
- * type Result = MaybeExcludeEmpty<{ a: string, b: number, c: undefined }, true>
- * //   ^? type Result = { a: string, b: number }
- */
-export type MaybeExcludeEmpty<
-  T,
-  TMaybeExclude extends boolean,
-> = TMaybeExclude extends true ? Exclude<T, [] | null | undefined> : T
-
 export type MaybePromise<T> = T | Promise<T>
 
 /**
- * @description Makes attributes on the type T required if TRequired is true.
+ * @description Makes attributes on the type T required if required is true.
  *
  * @example
  * MaybeRequired<{ a: string, b?: number }, true>
@@ -102,36 +119,9 @@ export type MaybePromise<T> = T | Promise<T>
  * MaybeRequired<{ a: string, b?: number }, false>
  * => { a: string, b?: number }
  */
-export type MaybeRequired<T, TRequired extends boolean> = TRequired extends true
-  ? Required<T>
+export type MaybeRequired<T, required extends boolean> = required extends true
+  ? ExactRequired<T>
   : T
-
-/**
- * @description Makes the attribute on the type T allow undefined if TUndefinedish is true.
- *
- * @example
- * MaybeUndefined<string, true>
- * => string | undefined
- *
- * MaybeUndefined<string, false>
- * => string
- */
-export type MaybeUndefined<
-  T,
-  TUndefinedish extends boolean,
-> = TUndefinedish extends true ? T | undefined : T
-
-/**
- * @private Helper for `Assign`. This is a workaround for tsc generating errorneous type definitions.
- */
-export type Assign_<T, U> = {
-  [K in
-    keyof T as K extends keyof U
-      ? U[K] extends void
-        ? never
-        : K
-      : K]: K extends keyof U ? U[K] : T[K]
-}
 
 /**
  * @description Assigns the properties of U onto T.
@@ -141,30 +131,16 @@ export type Assign_<T, U> = {
  * => { a: undefined, b: number, c: boolean }
  */
 export type Assign<T, U> = Assign_<T, U> & U
-
-/**
- * @description Makes nullable properties from T optional.
- *
- * @example
- * OptionalNullable<{ a: string | undefined, c: number }>
- * => { a?: string | undefined, c: number }
- */
-export type OptionalNullable<T> = {
-  [K in keyof T as T[K] extends NonNullable<unknown> ? K : never]: T[K]
-} & {
-  [K in keyof T as T[K] extends NonNullable<unknown> ? never : K]?: T[K]
+type Assign_<T, U> = {
+  [K in keyof T as K extends keyof U
+    ? U[K] extends void
+      ? never
+      : K
+    : K]: K extends keyof U ? U[K] : T[K]
 }
 
-/**
- * @description Make properties K of type T never.
- *
- * @example
- * NeverBy<{ a: string, b: boolean, c: number }, 'a' | 'c'>
- * => { a: never, b: boolean, c: never }
- */
-export type NeverBy<T, K extends keyof T> = {
-  [U in keyof T]: U extends K ? never : T[U]
-}
+// TODO: Remove when peer dep `typescript@>=4.5` (NoInfer is native)
+export type NoInfer<type> = [type][type extends any ? 0 : never]
 
 /**
  * @description Constructs a type by excluding `undefined` from `T`.
@@ -172,18 +148,16 @@ export type NeverBy<T, K extends keyof T> = {
  * @example
  * NoUndefined<string | undefined>
  * => string
+ *
+ * @internal
  */
 export type NoUndefined<T> = T extends undefined ? never : T
 
-/**
- * @description Construct a type with the properties of union type T except for those in type K.
- * @example
- * type Result = UnionOmit<{ a: string, b: number } | { a: string, b: undefined, c: number }, 'a'>
- * => { b: number } | { b: undefined, c: number }
- */
-export type UnionOmit<T, K extends keyof any> = T extends any
-  ? Omit<T, K>
-  : never
+/** Strict version of built-in Omit type */
+export type Omit<type, keys extends keyof type> = Pick<
+  type,
+  Exclude<keyof type, keys>
+>
 
 /**
  * @description Creates a type that is a partial of T, but with the required keys K.
@@ -192,7 +166,8 @@ export type UnionOmit<T, K extends keyof any> = T extends any
  * PartialBy<{ a: string, b: number }, 'a'>
  * => { a?: string, b: number }
  */
-export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+export type PartialBy<T, K extends keyof T> = Omit<T, K> &
+  ExactPartial<Pick<T, K>>
 
 /**
  * @description Combines members of an intersection into a readable type.
@@ -206,33 +181,36 @@ export type Prettify<T> = {
   [K in keyof T]: T[K]
 } & {}
 
-type TrimLeft<T, Chars extends string = ' '> = T extends `${Chars}${infer R}`
-  ? TrimLeft<R>
-  : T
-type TrimRight<T, Chars extends string = ' '> = T extends `${infer R}${Chars}`
-  ? TrimRight<R>
-  : T
+/** @internal */
+export type Evaluate<type> = {
+  [key in keyof type]: type[key]
+} & {}
 
 /**
- * @description Creates a type with required keys K from T.
+ * @description Creates a type that is T with the required keys K.
  *
  * @example
- * type Result = RequiredBy<{ a?: string, b?: number, c: number }, 'a' | 'c'>
- * //   ^? { a: string, b?: number, c: number }
+ * RequiredBy<{ a?: string, b: number }, 'a'>
+ * => { a: string, b: number }
  */
-export type RequiredBy<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>
+export type RequiredBy<T, K extends keyof T> = Omit<T, K> &
+  ExactRequired<Pick<T, K>>
 
 /**
- * @description Trims empty space from type T.
+ * @description Returns truthy if `array` contains `value`.
  *
  * @example
- * Trim<'      lol  '>
- * => 'lol'
+ * Some<[1, 2, 3], 2>
+ * => true
  */
-export type Trim<T, Chars extends string = ' '> = TrimLeft<
-  TrimRight<T, Chars>,
-  Chars
->
+export type Some<
+  array extends readonly unknown[],
+  value,
+> = array extends readonly [value, ...unknown[]]
+  ? true
+  : array extends readonly [unknown, ...infer rest]
+    ? Some<rest, value>
+    : false
 
 /**
  * @description Creates a type that extracts the values of T.
@@ -240,5 +218,124 @@ export type Trim<T, Chars extends string = ' '> = TrimLeft<
  * @example
  * ValueOf<{ a: string, b: number }>
  * => string | number
+ *
+ * @internal
  */
 export type ValueOf<T> = T[keyof T]
+
+export type UnionToTuple<
+  union,
+  ///
+  last = LastInUnion<union>,
+> = [union] extends [never] ? [] : [...UnionToTuple<Exclude<union, last>>, last]
+type LastInUnion<U> = UnionToIntersection<
+  U extends unknown ? (x: U) => 0 : never
+> extends (x: infer l) => 0
+  ? l
+  : never
+type UnionToIntersection<union> = (
+  union extends unknown
+    ? (arg: union) => 0
+    : never
+) extends (arg: infer i) => 0
+  ? i
+  : never
+
+export type IsUnion<
+  union,
+  ///
+  union2 = union,
+> = union extends union2 ? ([union2] extends [union] ? false : true) : never
+
+export type MaybePartial<
+  type,
+  enabled extends boolean | undefined,
+> = enabled extends true ? Prettify<ExactPartial<type>> : type
+
+export type ExactPartial<type> = {
+  [key in keyof type]?: type[key] | undefined
+}
+
+export type ExactRequired<type> = {
+  [P in keyof type]-?: Exclude<type[P], undefined>
+}
+
+export type OneOf<
+  union extends object,
+  fallback extends object | undefined = undefined,
+  ///
+  keys extends KeyofUnion<union> = KeyofUnion<union>,
+> = union extends infer Item
+  ? Prettify<
+      Item & {
+        [_K in Exclude<keys, keyof Item>]?: fallback extends object
+          ? // @ts-ignore
+            fallback[_K]
+          : undefined
+      }
+    >
+  : never
+type KeyofUnion<type> = type extends type ? keyof type : never
+
+///////////////////////////////////////////////////////////////////////////
+// Loose types
+
+/**
+ * Loose version of {@link Omit}
+ * @internal
+ */
+export type LooseOmit<type, keys extends string> = Pick<
+  type,
+  Exclude<keyof type, keys>
+>
+
+///////////////////////////////////////////////////////////////////////////
+// Union types
+
+export type UnionEvaluate<type> = type extends object ? Prettify<type> : type
+
+export type UnionLooseOmit<type, keys extends string> = type extends any
+  ? LooseOmit<type, keys>
+  : never
+
+/**
+ * @description Construct a type with the properties of union type T except for those in type K.
+ * @example
+ * type Result = UnionOmit<{ a: string, b: number } | { a: string, b: undefined, c: number }, 'a'>
+ * => { b: number } | { b: undefined, c: number }
+ */
+export type UnionOmit<type, keys extends keyof type> = type extends any
+  ? Omit<type, keys>
+  : never
+
+/**
+ * @description Construct a type with the properties of union type T except for those in type K.
+ * @example
+ * type Result = UnionOmit<{ a: string, b: number } | { a: string, b: undefined, c: number }, 'a'>
+ * => { b: number } | { b: undefined, c: number }
+ */
+export type UnionPick<type, keys extends keyof type> = type extends any
+  ? Pick<type, keys>
+  : never
+
+/**
+ * @description Creates a type that is a partial of T, but with the required keys K.
+ *
+ * @example
+ * PartialBy<{ a: string, b: number } | { a: string, b: undefined, c: number }, 'a'>
+ * => { a?: string, b: number } | { a?: string, b: undefined, c: number }
+ */
+export type UnionPartialBy<T, K extends keyof T> = T extends any
+  ? PartialBy<T, K>
+  : never
+
+/**
+ * @description Creates a type that is T with the required keys K.
+ *
+ * @example
+ * RequiredBy<{ a?: string, b: number } | { a?: string, c?: number }, 'a'>
+ * => { a: string, b: number } | { a: string, c?: number }
+ */
+export type UnionRequiredBy<T, K extends keyof T> = T extends any
+  ? RequiredBy<T, K>
+  : never

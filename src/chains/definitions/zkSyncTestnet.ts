@@ -1,16 +1,15 @@
-import { defineChain } from '../../utils/chain.js'
+import { defineChain } from '../../utils/chain/defineChain.js'
+import { chainConfig } from '../../zksync/chainConfig.js'
 
+/** @deprecated Use `zkSyncSepoliaTestnet` */
 export const zkSyncTestnet = /*#__PURE__*/ defineChain({
+  ...chainConfig,
   id: 280,
   name: 'zkSync Era Testnet',
   network: 'zksync-era-testnet',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
     default: {
-      http: ['https://testnet.era.zksync.dev'],
-      webSocket: ['wss://testnet.era.zksync.dev/ws'],
-    },
-    public: {
       http: ['https://testnet.era.zksync.dev'],
       webSocket: ['wss://testnet.era.zksync.dev/ws'],
     },

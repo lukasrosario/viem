@@ -1,8 +1,7 @@
-import { defineChain } from '../../utils/chain.js'
+import { defineChain } from '../../utils/chain/defineChain.js'
 
 export const mev = /*#__PURE__*/ defineChain({
   id: 7518,
-  network: 'MEVerse',
   name: 'MEVerse Chain Mainnet',
   nativeCurrency: {
     decimals: 18,
@@ -11,9 +10,6 @@ export const mev = /*#__PURE__*/ defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://rpc.meversemainnet.io'],
-    },
-    public: {
       http: ['https://rpc.meversemainnet.io'],
     },
   },

@@ -1,53 +1,58 @@
 import type { ErrorType } from '../../errors/utils.js'
 
-type Resolved<TReturnType extends readonly unknown[] = any> = [
-  result: TReturnType[number],
-  results: TReturnType,
+type Resolved<returnType extends readonly unknown[] = any> = [
+  result: returnType[number],
+  results: returnType,
 ]
 
-type PendingPromise<TReturnType extends readonly unknown[] = any> = {
-  resolve?: (data: Resolved<TReturnType>) => void
-  reject?: (reason?: unknown) => void
+type PendingPromise<returnType extends readonly unknown[] = any> = {
+  resolve?: ((data: Resolved<returnType>) => void) | undefined
+  reject?: ((reason?: unknown) => void) | undefined
 }
 
 type SchedulerItem = { args: unknown; pendingPromise: PendingPromise }
 
-export type CreateBatchSchedulerArguments<
-  TParameters = unknown,
-  TReturnType extends readonly unknown[] = readonly unknown[],
+type BatchResultsCompareFn<result = unknown> = (a: result, b: result) => number
+
+type CreateBatchSchedulerArguments<
+  parameters = unknown,
+  returnType extends readonly unknown[] = readonly unknown[],
 > = {
-  fn: (args: TParameters[]) => Promise<TReturnType>
+  fn: (args: parameters[]) => Promise<returnType>
   id: number | string
-  shouldSplitBatch?: (args: TParameters[]) => boolean
-  wait?: number
+  shouldSplitBatch?: ((args: parameters[]) => boolean) | undefined
+  wait?: number | undefined
+  sort?: BatchResultsCompareFn<returnType[number]> | undefined
 }
 
-export type CreateBatchSchedulerReturnType<
-  TParameters = unknown,
-  TReturnType extends readonly unknown[] = readonly unknown[],
+type CreateBatchSchedulerReturnType<
+  parameters = unknown,
+  returnType extends readonly unknown[] = readonly unknown[],
 > = {
   flush: () => void
-  schedule: TParameters extends undefined
-    ? (args?: TParameters) => Promise<Resolved<TReturnType>>
-    : (args: TParameters) => Promise<Resolved<TReturnType>>
+  schedule: parameters extends undefined
+    ? (args?: parameters | undefined) => Promise<Resolved<returnType>>
+    : (args: parameters) => Promise<Resolved<returnType>>
 }
 
 export type CreateBatchSchedulerErrorType = ErrorType
 
 const schedulerCache = /*#__PURE__*/ new Map<number | string, SchedulerItem[]>()
 
+/** @internal */
 export function createBatchScheduler<
-  TParameters,
-  TReturnType extends readonly unknown[],
+  parameters,
+  returnType extends readonly unknown[],
 >({
   fn,
   id,
   shouldSplitBatch,
   wait = 0,
+  sort,
 }: CreateBatchSchedulerArguments<
-  TParameters,
-  TReturnType
->): CreateBatchSchedulerReturnType<TParameters, TReturnType> {
+  parameters,
+  returnType
+>): CreateBatchSchedulerReturnType<parameters, returnType> {
   const exec = async () => {
     const scheduler = getScheduler()
     flush()
@@ -56,21 +61,26 @@ export function createBatchScheduler<
 
     if (args.length === 0) return
 
-    fn(args as TParameters[])
+    fn(args as parameters[])
       .then((data) => {
-        scheduler.forEach(({ pendingPromise }, i) =>
-          pendingPromise.resolve?.([data[i], data]),
-        )
+        if (sort && Array.isArray(data)) data.sort(sort)
+        for (let i = 0; i < scheduler.length; i++) {
+          const { pendingPromise } = scheduler[i]
+          pendingPromise.resolve?.([data[i], data])
+        }
       })
       .catch((err) => {
-        scheduler.forEach(({ pendingPromise }) => pendingPromise.reject?.(err))
+        for (let i = 0; i < scheduler.length; i++) {
+          const { pendingPromise } = scheduler[i]
+          pendingPromise.reject?.(err)
+        }
       })
   }
 
   const flush = () => schedulerCache.delete(id)
 
   const getBatchedArgs = () =>
-    getScheduler().map(({ args }) => args) as TParameters[]
+    getScheduler().map(({ args }) => args) as parameters[]
 
   const getScheduler = () => schedulerCache.get(id) || []
 
@@ -79,9 +89,9 @@ export function createBatchScheduler<
 
   return {
     flush,
-    async schedule(args: TParameters) {
-      const pendingPromise: PendingPromise<TReturnType> = {}
-      const promise = new Promise<Resolved<TReturnType>>((resolve, reject) => {
+    async schedule(args: parameters) {
+      const pendingPromise: PendingPromise<returnType> = {}
+      const promise = new Promise<Resolved<returnType>>((resolve, reject) => {
         pendingPromise.resolve = resolve
         pendingPromise.reject = reject
       })
@@ -100,5 +110,5 @@ export function createBatchScheduler<
       setTimeout(exec, wait)
       return promise
     },
-  } as unknown as CreateBatchSchedulerReturnType<TParameters, TReturnType>
+  } as unknown as CreateBatchSchedulerReturnType<parameters, returnType>
 }

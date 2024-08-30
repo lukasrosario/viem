@@ -38,18 +38,18 @@ export function getContractError<err extends ErrorType<string>>(
   }: {
     abi: Abi
     args: any
-    address?: Address
-    docsPath?: string
+    address?: Address | undefined
+    docsPath?: string | undefined
     functionName: string
-    sender?: Address
+    sender?: Address | undefined
   },
 ): GetContractErrorReturnType {
   const { code, data, message, shortMessage } = (
     err instanceof RawContractError
       ? err
       : err instanceof BaseError
-      ? err.walk((err) => 'data' in (err as Error)) || err.walk()
-      : {}
+        ? err.walk((err) => 'data' in (err as Error)) || err.walk()
+        : {}
   ) as RawContractError
 
   const cause = (() => {

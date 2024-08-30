@@ -29,12 +29,13 @@ import {
   UserRejectedRequestError,
 } from '../errors/rpc.js'
 
-import { buildRequest, isDeterministicError } from './buildRequest.js'
-import { rpc } from './rpc.js'
+import { buildRequest, shouldRetry } from './buildRequest.js'
+import { getHttpRpcClient } from './rpc/http.js'
 
 function request(url: string) {
+  const httpClient = getHttpRpcClient(url)
   return async ({ method, params }: any) => {
-    const { error, result } = await rpc.http(url, {
+    const { error, result } = await httpClient.request({
       body: {
         method,
         params,
@@ -51,16 +52,63 @@ function request(url: string) {
 }
 
 test('default', async () => {
-  const server = await createHttpServer((_req, res) => {
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
+  const args: string[] = []
+  const server = await createHttpServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => {
+      body += chunk
     })
-    res.end(JSON.stringify({ result: '0x1' }))
+    req.on('end', () => {
+      args.push(body)
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+      })
+      res.end(JSON.stringify({ result: body }))
+    })
   })
 
+  const request_ = buildRequest(request(server.url))
+
+  const results = await Promise.all([
+    request_({ method: 'eth_a' }),
+    request_({ method: 'eth_b' }),
+    request_({ method: 'eth_a', params: [1] }),
+    request_({ method: 'eth_c' }),
+    request_({ method: 'eth_d' }),
+    request_({ method: 'eth_a', params: [2] }),
+    request_({ method: 'eth_a' }),
+    request_({ method: 'eth_a' }),
+  ])
+
   expect(
-    await buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
-  ).toMatchInlineSnapshot('"0x1"')
+    args
+      .map((arg) => JSON.parse(arg))
+      .sort((a, b) => a.id - b.id)
+      .map((arg) => JSON.stringify(arg)),
+  ).toMatchInlineSnapshot(`
+    [
+      "{"jsonrpc":"2.0","id":1,"method":"eth_a"}",
+      "{"jsonrpc":"2.0","id":2,"method":"eth_b"}",
+      "{"jsonrpc":"2.0","id":3,"method":"eth_a","params":[1]}",
+      "{"jsonrpc":"2.0","id":4,"method":"eth_c"}",
+      "{"jsonrpc":"2.0","id":5,"method":"eth_d"}",
+      "{"jsonrpc":"2.0","id":6,"method":"eth_a","params":[2]}",
+      "{"jsonrpc":"2.0","id":7,"method":"eth_a"}",
+      "{"jsonrpc":"2.0","id":8,"method":"eth_a"}",
+    ]
+  `)
+  expect(results).toMatchInlineSnapshot(`
+    [
+      "{"jsonrpc":"2.0","id":1,"method":"eth_a"}",
+      "{"jsonrpc":"2.0","id":2,"method":"eth_b"}",
+      "{"jsonrpc":"2.0","id":3,"method":"eth_a","params":[1]}",
+      "{"jsonrpc":"2.0","id":4,"method":"eth_c"}",
+      "{"jsonrpc":"2.0","id":5,"method":"eth_d"}",
+      "{"jsonrpc":"2.0","id":6,"method":"eth_a","params":[2]}",
+      "{"jsonrpc":"2.0","id":7,"method":"eth_a"}",
+      "{"jsonrpc":"2.0","id":8,"method":"eth_a"}",
+    ]
+  `)
 })
 
 describe('args', () => {
@@ -82,6 +130,31 @@ describe('args', () => {
       buildRequest(request(server.url), { retryCount: 1 })({
         method: 'eth_blockNumber',
       }),
+    ).rejects.toThrowError()
+    expect(retryCount).toBe(1)
+  })
+
+  test('retryCount (lazy)', async () => {
+    let retryCount = -1
+    const server = await createHttpServer((_req, res) => {
+      retryCount++
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+      })
+      res.end(
+        JSON.stringify({
+          error: { code: InternalRpcError.code, message: 'message' },
+        }),
+      )
+    })
+
+    await expect(() =>
+      buildRequest(request(server.url))(
+        {
+          method: 'eth_blockNumber',
+        },
+        { retryCount: 1 },
+      ),
     ).rejects.toThrowError()
     expect(retryCount).toBe(1)
   })
@@ -117,12 +190,12 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(() =>
           Promise.reject(new BaseError('foo', { details: 'bar' })),
-        )(),
+        )({ method: 'eth_test' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "foo
+        [ViemError: foo
 
         Details: bar
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -141,13 +214,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.
+        [ParseRpcError: Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -166,13 +239,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "JSON is not a valid request object.
+        [InvalidRequestRpcError: JSON is not a valid request object.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -191,13 +264,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The method does not exist / is not available.
+        [MethodNotFoundRpcError: The method does not exist / is not available.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -216,14 +289,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Invalid parameters were provided to the RPC method.
+        [InvalidParamsRpcError: Invalid parameters were provided to the RPC method.
         Double check you have provided the correct parameters.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -242,13 +315,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "An internal error was received.
+        [InternalRpcError: An internal error was received.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -267,14 +340,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Missing or invalid parameters.
+        [InvalidInputRpcError: Missing or invalid parameters.
         Double check you have provided the correct parameters.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -293,13 +366,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Requested resource not found.
+        [ResourceNotFoundRpcError: Requested resource not found.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -321,13 +394,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Requested resource not available.
+        [ResourceUnavailableRpcError: Requested resource not available.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -350,13 +423,13 @@ describe('behavior', () => {
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(
         `
-        "Transaction creation failed.
+        [TransactionRejectedRpcError: Transaction creation failed.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `,
       )
     })
@@ -379,13 +452,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Method is not implemented.
+        [MethodNotSupportedRpcError: Method is not implemented.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -404,13 +477,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Request exceeds defined limit.
+        [LimitExceededRpcError: Request exceeds defined limit.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -432,13 +505,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Version of JSON-RPC protocol is not supported.
+        [JsonRpcVersionUnsupportedError: Version of JSON-RPC protocol is not supported.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -457,13 +530,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "User rejected the request.
+        [UserRejectedRequestError: User rejected the request.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -482,13 +555,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "User rejected the request.
+        [UserRejectedRequestError: User rejected the request.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -507,13 +580,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The requested method and/or account has not been authorized by the user.
+        [UnauthorizedProviderError: The requested method and/or account has not been authorized by the user.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -535,13 +608,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The Provider does not support the requested method.
+        [UnsupportedProviderMethodError: The Provider does not support the requested method.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -560,13 +633,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The Provider is disconnected from all chains.
+        [ProviderDisconnectedError: The Provider is disconnected from all chains.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -585,13 +658,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The Provider is not connected to the requested chain.
+        [ChainDisconnectedError: The Provider is not connected to the requested chain.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -610,13 +683,13 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "An error occurred when attempting to switch chain.
+        [SwitchChainError: An error occurred when attempting to switch chain.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -635,25 +708,27 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "Invalid parameters were provided to the RPC method.
+        [InvalidParamsRpcError: Invalid parameters were provided to the RPC method.
         Double check you have provided the correct parameters.
 
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: message
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
     test('UnknownRpcError', async () => {
       await expect(() =>
-        buildRequest(() => Promise.reject(new Error('wat')))(),
+        buildRequest(() => Promise.reject(new Error('wat')))({
+          method: 'eth_test',
+        }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "An unknown RPC error occurred.
+        [UnknownRpcError: An unknown RPC error occurred.
 
         Details: wat
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
 
@@ -666,17 +741,79 @@ describe('behavior', () => {
               url: 'http://localhost:8000',
             }),
           ),
-        )(),
+        )({
+          method: 'eth_test',
+        }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "The request took too long to respond.
+        [TimeoutError: The request took too long to respond.
 
         URL: http://localhost
-        Request body: {\\"foo\\":\\"bar\\"}
+        Request body: {"foo":"bar"}
 
         Details: The request timed out.
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
     })
+  })
+
+  test('dedupes requests', async () => {
+    const args: string[] = []
+    const server = await createHttpServer((req, res) => {
+      let body = ''
+      req.on('data', (chunk) => {
+        body += chunk
+      })
+      req.on('end', () => {
+        args.push(body)
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+        })
+        res.end(JSON.stringify({ result: body }))
+      })
+    })
+
+    const uid = 'foo'
+    const request_ = buildRequest(request(server.url), { uid })
+
+    const results = await Promise.all([
+      request_({ method: 'eth_blockNumber' }, { dedupe: true }),
+      request_({ method: 'eth_blockNumber' }, { dedupe: true }),
+      // this will not be deduped (different params).
+      request_({ method: 'eth_blockNumber', params: [1] }, { dedupe: true }),
+      request_({ method: 'eth_blockNumber' }, { dedupe: true }),
+      // this will not be deduped (different method).
+      request_({ method: 'eth_chainId' }, { dedupe: true }),
+      request_({ method: 'eth_blockNumber' }, { dedupe: true }),
+      // this will not be deduped (dedupe: undefined).
+      request_({ method: 'eth_blockNumber' }),
+      request_({ method: 'eth_blockNumber' }, { dedupe: true }),
+    ])
+
+    expect(
+      args
+        .map((arg) => JSON.parse(arg))
+        .sort((a, b) => a.id - b.id)
+        .map((arg) => JSON.stringify(arg)),
+    ).toMatchInlineSnapshot(`
+      [
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":69,"method":"eth_blockNumber","params":[1]}",
+        "{"jsonrpc":"2.0","id":70,"method":"eth_chainId"}",
+        "{"jsonrpc":"2.0","id":71,"method":"eth_blockNumber"}",
+      ]
+    `)
+    expect(results).toMatchInlineSnapshot(`
+      [
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":69,"method":"eth_blockNumber","params":[1]}",
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":70,"method":"eth_chainId"}",
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":71,"method":"eth_blockNumber"}",
+        "{"jsonrpc":"2.0","id":68,"method":"eth_blockNumber"}",
+      ]
+    `)
   })
 
   describe('retry', () => {
@@ -726,7 +863,9 @@ describe('behavior', () => {
         buildRequest(() => {
           retryCount++
           return Promise.reject(new Error('wat'))
-        })(),
+        })({
+          method: 'eth_test',
+        }),
       ).rejects.toThrowError()
       expect(retryCount).toBe(3)
     })
@@ -744,14 +883,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 500
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Internal Server Error
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -770,14 +909,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 500
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Internal Server Error
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -795,14 +934,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 403
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Forbidden
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -820,14 +959,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 408
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Request Timeout
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -845,14 +984,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 413
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Payload Too Large
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -870,14 +1009,14 @@ describe('behavior', () => {
       await expect(() =>
         buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
       ).rejects.toThrowErrorMatchingInlineSnapshot(`
-        "HTTP request failed.
+        [HttpRequestError: HTTP request failed.
 
         Status: 408
         URL: http://localhost
-        Request body: {\\"method\\":\\"eth_blockNumber\\"}
+        Request body: {"method":"eth_blockNumber"}
 
         Details: Request Timeout
-        Version: viem@1.0.2"
+        Version: viem@x.y.z]
       `)
       expect(retryCount).toBe(3)
     })
@@ -917,99 +1056,123 @@ describe('behavior', () => {
       ).rejects.toThrowError()
       expect(retryCount).toBe(0)
     })
+
+    test('deterministic UserRejectedRequestError', async () => {
+      let retryCount = -1
+      const server = await createHttpServer((_req, res) => {
+        retryCount++
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+        })
+        res.end(
+          JSON.stringify({
+            error: { code: UserRejectedRequestError.code, message: 'message' },
+          }),
+        )
+      })
+
+      await expect(() =>
+        buildRequest(request(server.url))({ method: 'eth_blockNumber' }),
+      ).rejects.toThrowError()
+      expect(retryCount).toBe(0)
+    })
   })
 })
 
-describe('isDeterministicError', () => {
+describe('shouldRetry', () => {
   test('Error', () => {
-    expect(isDeterministicError(new BaseError('wat'))).toBe(false)
+    expect(shouldRetry(new BaseError('wat'))).toBe(true)
   })
 
-  test('Error', () => {
-    expect(isDeterministicError(new ParseRpcError({} as any))).toBe(true)
+  test('ParseRpcError', () => {
+    expect(shouldRetry(new ParseRpcError({} as any))).toBe(false)
   })
 
-  test('Error', () => {
-    expect(isDeterministicError(new TimeoutError({} as any))).toBe(false)
+  test('TimeoutError', () => {
+    expect(shouldRetry(new TimeoutError({} as any))).toBe(true)
   })
 
   test('UnknownRpcError', () => {
-    expect(isDeterministicError(new UnknownRpcError(new Error('wat')))).toBe(
-      false,
-    )
+    expect(shouldRetry(new UnknownRpcError(new Error('wat')))).toBe(true)
   })
 
   test('HttpRequestError (500)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 500, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (502)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 502, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (503)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 503, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (504)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 504, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (429)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 429, url: '' }),
+      ),
+    ).toBe(true)
+  })
+
+  test('HttpRequestError (401)', () => {
+    expect(
+      shouldRetry(
+        new HttpRequestError({ body: {}, details: '', status: 401, url: '' }),
       ),
     ).toBe(false)
   })
 
   test('HttpRequestError (403)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 403, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (408)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 408, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('HttpRequestError (413)', () => {
     expect(
-      isDeterministicError(
+      shouldRetry(
         new HttpRequestError({ body: {}, details: '', status: 413, url: '' }),
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('InternalRpcError', () => {
-    expect(isDeterministicError(new InternalRpcError({} as any))).toBe(false)
+    expect(shouldRetry(new InternalRpcError({} as any))).toBe(true)
   })
 
   test('LimitExceededRpcError', () => {
-    expect(isDeterministicError(new LimitExceededRpcError({} as any))).toBe(
-      false,
-    )
+    expect(shouldRetry(new LimitExceededRpcError({} as any))).toBe(true)
   })
 })
