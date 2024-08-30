@@ -13,7 +13,8 @@ export type AccountSigner = {
 export type KeySigner = {
   type: 'key'
   data: {
-    id: string
+    type: 'secp256r1' | 'secp256k1'
+    publicKey: `0x${string}`
   }
 }
 
